@@ -1,0 +1,67 @@
+:root {
+  --bg: #0f1115;
+  --panel: #171a21;
+  --border: #262b36;
+  --text: #e6e9ef;
+  --muted: #8b93a5;
+  --accent: #d9a441; /* amber — the watchman's eye */
+  --needs: #e06c5c;
+  --handle: #d9a441;
+  --ignore: #5b6472;
+  --ok: #5cb87a;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+main { max-width: 880px; margin: 0 auto; padding: 32px 20px 80px; }
+
+header.hero { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px; }
+header.hero h1 { font-size: 28px; margin: 0; letter-spacing: 0.5px; }
+header.hero h1 .eye { color: var(--accent); }
+.tagline { color: var(--muted); margin: 0 0 24px; }
+
+button.primary {
+  background: var(--accent); color: #14110a; border: 0; border-radius: 8px;
+  padding: 10px 18px; font-size: 15px; font-weight: 600; cursor: pointer;
+}
+button.primary:disabled { opacity: 0.5; cursor: wait; }
+
+section { margin-top: 28px; }
+section > h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--muted); margin: 0 0 10px; }
+section > h2 .count { color: var(--text); }
+
+.card {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+  padding: 14px 16px; margin-bottom: 10px; display: flex; gap: 14px; align-items: flex-start;
+}
+.card .stripe { width: 4px; align-self: stretch; border-radius: 2px; flex-shrink: 0; }
+.stripe.needs_you { background: var(--needs); }
+.stripe.handle { background: var(--handle); }
+.stripe.ignore { background: var(--ignore); }
+
+.card .body { flex: 1; min-width: 0; }
+.card .title { font-weight: 600; }
+.card .meta { color: var(--muted); font-size: 13px; margin-top: 2px; }
+.card .reason { margin-top: 6px; font-size: 14px; }
+.card .reason .who { color: var(--accent); font-weight: 600; }
+
+.card .controls { display: flex; gap: 8px; flex-shrink: 0; align-items: center; }
+.controls button {
+  border: 1px solid var(--border); background: transparent; color: var(--text);
+  border-radius: 7px; padding: 6px 12px; cursor: pointer; font-size: 13px;
+}
+.controls button.approve { border-color: var(--ok); color: var(--ok); }
+.controls button.reject { border-color: var(--needs); color: var(--needs); }
+.badge { font-size: 12px; padding: 3px 9px; border-radius: 20px; border: 1px solid var(--border); color: var(--muted); }
+.badge.approved { color: var(--ok); border-color: var(--ok); }
+.badge.rejected { color: var(--needs); border-color: var(--needs); }
+
+.empty { color: var(--muted); border: 1px dashed var(--border); border-radius: 10px; padding: 28px; text-align: center; }
+.enginenote { color: var(--muted); font-size: 13px; margin-top: 16px; }
