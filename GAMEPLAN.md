@@ -1,8 +1,12 @@
-# Autopilot — Personal AI Chief of Staff
+# Argus — Personal AI Chief of Staff
 
 **Gameplan · July 2026**
 
 A personal web app where AI runs the parts of your life you don't want to pay attention to. It ingests your inboxes and calendars, decides what matters, recommends (and eventually takes) actions, and shows you one dashboard: *here's what I handled, here's what needs you.*
+
+**The persona:** Argus Panoptes, the hundred-eyed giant of Greek myth who never fully slept — some eyes always kept watch. That's the product in one image: it watches everything so you don't have to. The persona carries into the UI voice ("Argus has eyes on it", "Nothing needs you today") and the triage system prompt, which frames the model as a vigilant, understated steward — observant, brief, never dramatic.
+
+**Deployment decision (settled):** runs on a home server — an always-on Node process with local SQLite and node-cron for the 7am brief. No cloud hosting; Google OAuth stays in testing mode with you as the only user.
 
 ---
 
@@ -61,7 +65,7 @@ Auto-send anything, bank/finance integration, multi-user, mobile app, non-Google
 | **SQLite + Drizzle** | Single-user personal tool — no reason to run a DB server. One file, trivially backed up. Drizzle for typed queries + migrations. |
 | **`@anthropic-ai/sdk`** | The decision engine. Tool use + structured outputs do the heavy lifting (details in §5). |
 | **Google APIs (`googleapis`)** | OAuth 2.0 with offline refresh token, stored encrypted. "Testing" mode on the OAuth consent screen is fine — it's just you. |
-| **node-cron in a long-running server** | Deploy as a plain Node server on a small VPS/home server/Fly.io machine so the 7am brief can run. (Vercel works too with Vercel Cron, but a persistent server is simpler for a personal tool with background jobs.) |
+| **node-cron on the home server** | An always-on Node process at home runs the 7am brief and syncs. Keeps tokens and email data entirely on your own hardware — no cloud host to trust. |
 | **Tailwind + shadcn/ui** | Fast, clean dashboard UI without design overhead. |
 
 ## 4. Data model
@@ -174,8 +178,10 @@ The 7am run isn't latency-sensitive → use the Message Batches API (50% off all
 
 ## 8. First session checklist
 
-1. `npx create-next-app autopilot --typescript --tailwind`
+1. `npx create-next-app argus --typescript --tailwind`
 2. Add Drizzle + SQLite, define the §4 schema, run first migration
-3. Google Cloud project → OAuth client (testing mode) → get Gmail+Calendar consent working
+3. Google Cloud project → OAuth client (testing mode) → get Gmail+Calendar consent working. Set the redirect URI to the home server's address (e.g. `http://argus.local:3000/api/auth/callback` or a Tailscale hostname) — do the one-time consent from a browser on your network.
 4. Hardcode one triage call against 10 real emails; eyeball the verdicts
 5. If the verdicts feel right → build the dashboard. If not → tune the prompt first. The triage quality is the product; everything else is plumbing.
+
+**Home-server notes:** run under `systemd` or `pm2` so it survives reboots; nightly `sqlite3 argus.db ".backup"` cron to a second disk or cloud drive; access from your phone via Tailscale rather than exposing a port to the internet.
