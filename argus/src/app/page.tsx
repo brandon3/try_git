@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 type Row = {
   decision: {
@@ -37,6 +37,12 @@ const ACTION_LABEL: Record<string, string> = {
   flag: "flag for you",
 };
 
+const BADGE_LABEL: Record<string, string> = {
+  approved: "Done",
+  rejected: "Dismissed",
+  acknowledged: "Seen",
+};
+
 const GLYPH: Record<string, string> = { email: "✉️", event: "📅" };
 
 function greeting(): string {
@@ -51,6 +57,9 @@ export default function Dashboard() {
   const [rows, setRows] = useState<Row[]>([]);
   const [running, setRunning] = useState(false);
   const [engine, setEngine] = useState<string | null>(null);
+  // Decision currently collecting a rejection note (axis 3: rationale).
+  const [noteFor, setNoteFor] = useState<number | null>(null);
+  const noteRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     const res = await fetch("/api/brief");
@@ -61,6 +70,10 @@ export default function Dashboard() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (noteFor !== null) noteRef.current?.focus();
+  }, [noteFor]);
 
   async function runBrief() {
     setRunning(true);
@@ -74,19 +87,40 @@ export default function Dashboard() {
     }
   }
 
-  async function respond(id: number, response: "approved" | "rejected") {
+  async function respond(
+    id: number,
+    response: "approved" | "rejected" | "acknowledged",
+    note?: string,
+  ) {
     await fetch(`/api/decisions/${id}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ response }),
+      body: JSON.stringify({ response, note }),
     });
+    setNoteFor(null);
     await load();
   }
 
-  const needs = rows.filter((r) => r.decision.verdict === "needs_you").length;
-  const pending = rows.filter(
-    (r) => r.decision.verdict !== "needs_you" && !r.decision.userResponse,
-  ).length;
+  async function approveAll(group: Row[]) {
+    const pending = group.filter(
+      (r) => !r.decision.userResponse && r.decision.action !== "none",
+    );
+    for (const r of pending) {
+      await fetch(`/api/decisions/${r.decision.id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ response: "approved" }),
+      });
+    }
+    await load();
+  }
+
+  function submitNote(id: number) {
+    void respond(id, "rejected", noteRef.current?.value ?? "");
+  }
+
+  const reviewed = rows.filter((r) => r.decision.userResponse).length;
+  const allReviewed = rows.length > 0 && reviewed === rows.length;
 
   const today = new Date().toLocaleDateString(undefined, {
     weekday: "long",
@@ -114,9 +148,16 @@ export default function Dashboard() {
           {rows.length > 0 && (
             <>
               {" · "}
-              <strong>{needs}</strong> need{needs === 1 ? "s" : ""} you
-              {" · "}
-              <strong>{pending}</strong> awaiting your OK
+              {allReviewed ? (
+                <strong>All {rows.length} decisions reviewed ✓</strong>
+              ) : (
+                <>
+                  <strong>
+                    {reviewed} of {rows.length}
+                  </strong>{" "}
+                  decisions reviewed
+                </>
+              )}
             </>
           )}
         </p>
@@ -132,9 +173,19 @@ export default function Dashboard() {
         {SECTIONS.map(({ verdict, heading }) => {
           const group = rows.filter((r) => r.decision.verdict === verdict);
           if (group.length === 0) return null;
+          const pendingActions = group.filter(
+            (r) => !r.decision.userResponse && r.decision.action !== "none",
+          ).length;
           return (
             <section key={verdict}>
-              <h2>{heading}</h2>
+              <div className="sectionhead">
+                <h2>{heading}</h2>
+                {verdict !== "needs_you" && pendingActions > 1 && (
+                  <button className="linkbtn" onClick={() => approveAll(group)}>
+                    Approve all ({pendingActions})
+                  </button>
+                )}
+              </div>
               <div className="group">
                 {group.map((r) => (
                   <div className="row" key={r.decision.id}>
@@ -159,8 +210,26 @@ export default function Dashboard() {
                     <div className="controls">
                       {r.decision.userResponse ? (
                         <span className={`badge ${r.decision.userResponse}`}>
-                          {r.decision.userResponse === "approved" ? "Done" : "Dismissed"}
+                          {BADGE_LABEL[r.decision.userResponse]}
                         </span>
+                      ) : noteFor === r.decision.id ? (
+                        <div className="notebox">
+                          <input
+                            ref={noteRef}
+                            className="noteinput"
+                            placeholder="Why? (optional)"
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") submitNote(r.decision.id);
+                              if (e.key === "Escape") setNoteFor(null);
+                            }}
+                          />
+                          <button
+                            className="pill approve"
+                            onClick={() => submitNote(r.decision.id)}
+                          >
+                            Dismiss
+                          </button>
+                        </div>
                       ) : r.decision.action !== "none" ? (
                         <>
                           <button
@@ -171,13 +240,18 @@ export default function Dashboard() {
                           </button>
                           <button
                             className="pill reject"
-                            onClick={() => respond(r.decision.id, "rejected")}
+                            onClick={() => setNoteFor(r.decision.id)}
                           >
                             Reject
                           </button>
                         </>
                       ) : (
-                        <span className="badge">Your call</span>
+                        <button
+                          className="pill reject"
+                          onClick={() => respond(r.decision.id, "acknowledged")}
+                        >
+                          Got it
+                        </button>
                       )}
                     </div>
                   </div>

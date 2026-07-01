@@ -134,7 +134,7 @@ button.cta:disabled { opacity: 0.5; cursor: default; }
 /* ── Grouped lists (iOS Settings style) ──────────────── */
 
 section { margin-top: 32px; }
-section > h2 {
+section h2 {
   font-size: 13px;
   font-weight: 600;
   text-transform: uppercase;
@@ -226,3 +226,41 @@ section > h2 {
   text-align: center;
   margin-top: 40px;
 }
+
+/* ── Review inputs ───────────────────────────────────── */
+
+.sectionhead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin: 0 16px 8px 0;
+}
+.sectionhead h2 { margin: 0 0 0 16px; }
+
+.linkbtn {
+  background: none;
+  border: 0;
+  color: var(--blue);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+}
+.linkbtn:hover { text-decoration: underline; }
+
+.notebox { display: flex; gap: 8px; align-items: center; }
+.noteinput {
+  background: var(--pill-gray);
+  border: 0;
+  border-radius: 980px;
+  padding: 7px 14px;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--text);
+  width: 180px;
+  outline: none;
+}
+.noteinput:focus { box-shadow: 0 0 0 2px var(--blue); }
+.noteinput::placeholder { color: var(--secondary); }
+
+.badge.acknowledged { background: rgba(0, 113, 227, 0.12); color: var(--blue); }
