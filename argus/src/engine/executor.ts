@@ -1,11 +1,15 @@
 import { db, schema } from "@/db";
 import { eq } from "drizzle-orm";
+import * as gmail from "@/connectors/gmail";
+import * as gcal from "@/connectors/gcal";
 
 // Executes an approved decision. The trust ladder lives HERE, not in the
 // model: only approved decisions reach this function, and in later phases
 // a `rules` check will decide whether approval can be implicit (auto).
-// In the sandbox every action is a logged no-op; at home each case calls
-// the Gmail/Calendar API.
+//
+// Dispatch is by the item's external_id prefix: real Gmail/Calendar items
+// hit the real APIs; fixture items are logged no-ops. Either way the side
+// effect is recorded in `actions` for auditability.
 
 export async function execute(decisionId: number): Promise<string> {
   const decision = db
@@ -18,8 +22,15 @@ export async function execute(decisionId: number): Promise<string> {
     throw new Error(`Decision ${decisionId} is not approved`);
   if (decision.action === "none") return "nothing to execute";
 
-  // Sandbox: record the side effect without performing it.
-  const result = `sandbox: would ${decision.action} item ${decision.itemId}`;
+  const item = db
+    .select()
+    .from(schema.items)
+    .where(eq(schema.items.id, decision.itemId))
+    .get();
+  if (!item) throw new Error(`Item ${decision.itemId} not found`);
+
+  const result = await perform(decision.action, item.externalId, decision.actionParams);
+
   db.insert(schema.actions)
     .values({
       decisionId: decision.id,
@@ -30,4 +41,46 @@ export async function execute(decisionId: number): Promise<string> {
     })
     .run();
   return result;
+}
+
+async function perform(
+  action: string,
+  externalId: string,
+  paramsJson: string | null,
+): Promise<string> {
+  const params = paramsJson ? (JSON.parse(paramsJson) as Record<string, string>) : {};
+
+  if (externalId.startsWith("gmail:")) {
+    const messageId = externalId.slice("gmail:".length);
+    switch (action) {
+      case "archive":
+        return gmail.archive(messageId);
+      case "label":
+        return gmail.label(messageId, params.label ?? "Argus");
+      case "draft_reply":
+        return gmail.draftReply(
+          messageId,
+          params.body ?? "(Argus drafted this placeholder — edit before sending.)",
+        );
+      case "flag":
+        return gmail.label(messageId, "Argus/Needs-you");
+      default:
+        throw new Error(`Unsupported gmail action: ${action}`);
+    }
+  }
+
+  if (externalId.startsWith("gcal:")) {
+    const eventId = externalId.slice("gcal:".length);
+    switch (action) {
+      case "accept_event":
+        return gcal.respond(eventId, "accepted");
+      case "decline_event":
+        return gcal.respond(eventId, "declined");
+      default:
+        throw new Error(`Unsupported calendar action: ${action}`);
+    }
+  }
+
+  // Fixture items: record without performing.
+  return `sandbox: would ${action} item ${externalId}`;
 }

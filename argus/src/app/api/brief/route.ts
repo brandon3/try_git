@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
-import { sync } from "@/connectors/fixtures";
+import { syncAll } from "@/connectors";
 import { runTriage } from "@/engine/triage";
 import { db, schema } from "@/db";
 import { eq, desc } from "drizzle-orm";
 
 // POST /api/brief — the "morning brief" run: sync sources, triage new items.
 export async function POST() {
-  const synced = await sync();
+  const synced = await syncAll();
   const triage = await runTriage();
   return NextResponse.json({ synced, triage });
 }
