@@ -2,11 +2,21 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+type Dimension =
+  | "wealth"
+  | "health"
+  | "happiness"
+  | "relationships"
+  | "home"
+  | "work"
+  | "other";
+
 type Row = {
   decision: {
     id: number;
     verdict: "needs_you" | "handle" | "ignore";
     action: string;
+    dimension: Dimension;
     reason: string;
     confidence: string;
     engine: string;
@@ -45,6 +55,21 @@ const BADGE_LABEL: Record<string, string> = {
 
 const GLYPH: Record<string, string> = { email: "✉️", event: "📅" };
 
+const DIMENSIONS: { key: Dimension; label: string; emoji: string }[] = [
+  { key: "wealth", label: "Wealth", emoji: "💰" },
+  { key: "health", label: "Health", emoji: "❤️" },
+  { key: "happiness", label: "Happiness", emoji: "☀️" },
+  { key: "relationships", label: "People", emoji: "👥" },
+  { key: "home", label: "Home", emoji: "🏠" },
+  { key: "work", label: "Work", emoji: "💼" },
+  { key: "other", label: "Other", emoji: "•" },
+];
+
+const DIM_META = Object.fromEntries(DIMENSIONS.map((d) => [d.key, d])) as Record<
+  Dimension,
+  (typeof DIMENSIONS)[number]
+>;
+
 function greeting(): string {
   const h = new Date().getHours();
   if (h < 5) return "Up late";
@@ -59,6 +84,7 @@ export default function Dashboard() {
   const [engine, setEngine] = useState<string | null>(null);
   // Decision currently collecting a rejection note (axis 3: rationale).
   const [noteFor, setNoteFor] = useState<number | null>(null);
+  const [dimFilter, setDimFilter] = useState<Dimension | null>(null);
   const noteRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -122,6 +148,17 @@ export default function Dashboard() {
   const reviewed = rows.filter((r) => r.decision.userResponse).length;
   const allReviewed = rows.length > 0 && reviewed === rows.length;
 
+  const dimCounts = rows.reduce(
+    (acc, r) => {
+      acc[r.decision.dimension] = (acc[r.decision.dimension] ?? 0) + 1;
+      return acc;
+    },
+    {} as Record<Dimension, number>,
+  );
+  const visible = dimFilter
+    ? rows.filter((r) => r.decision.dimension === dimFilter)
+    : rows;
+
   const today = new Date().toLocaleDateString(undefined, {
     weekday: "long",
     month: "long",
@@ -162,6 +199,26 @@ export default function Dashboard() {
           )}
         </p>
 
+        {rows.length > 0 && (
+          <div className="dims">
+            <button
+              className={`dim ${dimFilter === null ? "active" : ""}`}
+              onClick={() => setDimFilter(null)}
+            >
+              All <span className="dimcount">{rows.length}</span>
+            </button>
+            {DIMENSIONS.filter((d) => dimCounts[d.key]).map((d) => (
+              <button
+                key={d.key}
+                className={`dim ${dimFilter === d.key ? "active" : ""}`}
+                onClick={() => setDimFilter(dimFilter === d.key ? null : d.key)}
+              >
+                {d.emoji} {d.label} <span className="dimcount">{dimCounts[d.key]}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
         {rows.length === 0 && (
           <div className="empty">
             <div className="symbol">◉</div>
@@ -171,7 +228,7 @@ export default function Dashboard() {
         )}
 
         {SECTIONS.map(({ verdict, heading }) => {
-          const group = rows.filter((r) => r.decision.verdict === verdict);
+          const group = visible.filter((r) => r.decision.verdict === verdict);
           if (group.length === 0) return null;
           const pendingActions = group.filter(
             (r) => !r.decision.userResponse && r.decision.action !== "none",
@@ -194,9 +251,15 @@ export default function Dashboard() {
                     </div>
                     <div className="body">
                       <div className="title">{r.item.title}</div>
-                      {r.item.from && r.item.from !== "calendar" && (
-                        <div className="meta">{r.item.from}</div>
-                      )}
+                      <div className="meta">
+                        <span className={`dimtag ${r.decision.dimension}`}>
+                          {DIM_META[r.decision.dimension].emoji}{" "}
+                          {DIM_META[r.decision.dimension].label}
+                        </span>
+                        {r.item.from && r.item.from !== "calendar" && (
+                          <> · {r.item.from}</>
+                        )}
+                      </div>
                       <div className="reason">
                         {r.decision.reason}
                         {r.decision.action !== "none" && (

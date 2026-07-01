@@ -20,6 +20,13 @@ A personal web app where AI runs the parts of your life you don't want to pay at
 2. **Reversible-by-default.** The AI only gets automatic control over actions that can be undone (archive, label, draft). Irreversible actions (send, delete, decline) always require a tap, forever, unless you explicitly override per-rule.
 3. **Decisions are data.** Every recommendation and your response to it (approve / reject / edit) is stored and fed back as context. The system gets more *you* over time.
 4. **One inbox to rule them all.** Internally, everything (email, event, reminder, bill) is normalized into a single `items` stream that the decision engine triages. New sources plug in without new UI.
+5. **Life dimensions.** Every item is tagged with the part of life it touches: **wealth · health · happiness · relationships · home** (plus work and other as catch-alls). Verdict says *how urgent*; dimension says *which life area*. Today that's a filterable tag on the dashboard. The long game: each dimension becomes a coverage area with its own sources and proactive watchers —
+   - **Wealth**: bills, renewals, price hikes, statements; later a subscription ledger and monthly burn report.
+   - **Health**: appointments, prescriptions, renewals; later "you haven't scheduled a physical this year."
+   - **Happiness**: presales, hobbies, trips; later "you have zero fun on the calendar for three weeks."
+   - **Relationships**: birthdays, neglected threads; later "you haven't talked to Mom in a month."
+   - **Home**: maintenance cadences, vehicle admin; later a recurring-maintenance schedule Argus manages itself.
+   The dimension tags collected now are the training data for those watchers.
 
 ---
 

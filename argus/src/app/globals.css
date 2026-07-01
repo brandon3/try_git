@@ -264,3 +264,28 @@ section h2 {
 .noteinput::placeholder { color: var(--secondary); }
 
 .badge.acknowledged { background: rgba(0, 113, 227, 0.12); color: var(--blue); }
+
+/* ── Dimension filter & tags ─────────────────────────── */
+
+.dims {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: -14px 0 6px;
+}
+.dim {
+  border: 1px solid var(--hairline);
+  background: var(--card);
+  color: var(--text);
+  border-radius: 980px;
+  padding: 6px 13px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+.dim:active { transform: scale(0.96); }
+.dim.active { background: var(--text); color: var(--bg); border-color: var(--text); }
+.dimcount { opacity: 0.55; font-weight: 500; margin-left: 2px; }
+
+.dimtag { font-weight: 500; }

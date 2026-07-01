@@ -97,6 +97,43 @@ const FIXTURES: Fixture[] = [
     bodySnippet:
       "We noticed a new sign-in from a device you don't usually use. If this wasn't you, secure your account.",
   },
+  {
+    externalId: "em-008",
+    kind: "email",
+    title: "Your June investment statement is ready",
+    from: "statements@vanguard.example.com",
+    bodySnippet: "Your account statement for June is available. No action required.",
+  },
+  {
+    externalId: "em-009",
+    kind: "email",
+    title: "Gym membership renews July 15 — now $89/mo",
+    from: "billing@ironworks.gym",
+    bodySnippet:
+      "Your annual membership renews automatically on July 15 at the new rate of $89/mo (was $74).",
+  },
+  {
+    externalId: "ev-004",
+    kind: "event",
+    title: "Mom's birthday 🎂",
+    from: "calendar",
+    bodySnippet: "All-day. You usually call in the morning and send flowers.",
+    occursAt: hours(72),
+  },
+  {
+    externalId: "em-010",
+    kind: "email",
+    title: "Furnace filter replacement due (90-day reminder)",
+    from: "reminders@homekeeper.app",
+    bodySnippet: "It's been 90 days since the last filter change. MERV-13, 16x25x1.",
+  },
+  {
+    externalId: "em-011",
+    kind: "email",
+    title: "Presale code inside: The National at the Greek Theatre",
+    from: "presale@tickets.example.com",
+    bodySnippet: "Your artist presale starts Thursday 10am. Code: HIGHVIOLET.",
+  },
 ];
 
 export async function sync(): Promise<{ inserted: number }> {

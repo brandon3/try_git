@@ -34,6 +34,7 @@ export const decisions = sqliteTable("decisions", {
   actionParams: text("action_params"), // JSON
   reason: text("reason").notNull(),
   confidence: text("confidence").notNull(), // 'low' | 'medium' | 'high'
+  dimension: text("dimension").notNull().default("other"), // 'wealth' | 'health' | 'happiness' | 'relationships' | 'home' | 'work' | 'other'
   engine: text("engine").notNull(), // 'claude-opus-4-8' | 'mock'
   userResponse: text("user_response"), // null | 'approved' | 'rejected'
   respondedAt: integer("responded_at", { mode: "timestamp" }),

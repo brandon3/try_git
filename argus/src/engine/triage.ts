@@ -16,10 +16,24 @@ const ACTION = z.enum([
   "flag",
 ]);
 
+// Life dimensions — the second axis. Verdict says how urgent; dimension
+// says which part of life it touches. Later phases add per-dimension
+// sources and proactive watchers.
+const DIMENSION = z.enum([
+  "wealth",
+  "health",
+  "happiness",
+  "relationships",
+  "home",
+  "work",
+  "other",
+]);
+
 const TriageItem = z.object({
   itemId: z.string(),
   verdict: z.enum(["needs_you", "handle", "ignore"]),
   action: ACTION,
+  dimension: DIMENSION,
   reason: z.string(),
   confidence: z.enum(["low", "medium", "high"]),
 });
@@ -38,6 +52,15 @@ Triage each item into exactly one verdict:
 - "handle": routine and you can propose a concrete safe action
   (archive a promo, draft a short reply, accept a conflict-free event).
 - "ignore": noise; propose "archive" or "none".
+
+Also tag each item with the life dimension it touches:
+- "wealth": money — bills, subscriptions, investments, price changes, taxes.
+- "health": body and mind — appointments, fitness, prescriptions, insurance.
+- "happiness": joy — hobbies, events, travel, things the user does for fun.
+- "relationships": people — friends, family, birthdays, staying in touch.
+- "home": the household — maintenance, repairs, vehicles, utilities, admin.
+- "work": job and career.
+- "other": genuinely none of the above (generic noise, security alerts).
 
 Rules:
 - Fail toward attention: if unsure, use "needs_you" with confidence "low".
@@ -100,17 +123,39 @@ async function triageWithClaude(
 
 // Deterministic fallback so the full loop runs without an API key
 // (sandbox, offline dev). Heuristics approximate the policy above.
+type Dimension = z.infer<typeof DIMENSION>;
+
+function mockDimension(text: string): Dimension {
+  if (/\b(gym|dentist|doctor|fitness|prescription|workout|clinic)\b/.test(text)) return "health";
+  if (/\b(invest\w*|statements?|billing|price|subscriptions?|bank|tax|invoice)\b/.test(text)) return "wealth";
+  if (/\b(concert|presale|tickets|vacation|trip|festival|hobby)\b/.test(text)) return "happiness";
+  if (/\b(birthday|mom|dad|friend|anniversary)\b/.test(text)) return "relationships";
+  if (/\b(furnace|filters?|plumber|hvac|repairs?|registration|dmv|utility|lease)\b/.test(text)) return "home";
+  if (/\b(standup|planning|1:1|roadmap|q3|devconf|meeting)\b/.test(text)) return "work";
+  return "other";
+}
+
 function triageWithMock(pending: PendingItem[]): TriageResult[] {
   return pending.map((i) => {
     const text = `${i.title} ${i.bodySnippet ?? ""} ${i.from ?? ""}`.toLowerCase();
-    const t = (r: Omit<TriageResult, "itemId" | "engine">): TriageResult => ({
+    const dimension = mockDimension(text);
+    const t = (r: Omit<TriageResult, "itemId" | "engine" | "dimension">): TriageResult => ({
       itemId: String(i.id),
       engine: "mock",
+      dimension,
       ...r,
     });
 
     if (text.includes("security") || text.includes("sign-in"))
       return t({ verdict: "needs_you", action: "flag", confidence: "high", reason: "Security alert — verify this sign-in was you." });
+    if (text.includes("birthday"))
+      return t({ verdict: "needs_you", action: "none", confidence: "high", reason: "Someone you love has a day coming — plan the call." });
+    if (text.includes("statement") && text.includes("no action"))
+      return t({ verdict: "handle", action: "archive", confidence: "high", reason: "Routine statement — filed, still searchable." });
+    if (/furnace|filter|maintenance/.test(text))
+      return t({ verdict: "needs_you", action: "flag", confidence: "medium", reason: "Home maintenance is due — schedule it." });
+    if (/presale|tickets/.test(text))
+      return t({ verdict: "needs_you", action: "flag", confidence: "medium", reason: "A presale you might care about has a start time." });
     if (text.includes("conflict"))
       return t({ verdict: "needs_you", action: "none", confidence: "high", reason: "Two commitments overlap; one has to move." });
     if (text.includes("expires") || text.includes("renew"))
@@ -156,6 +201,7 @@ export async function runTriage(): Promise<{ triaged: number; engine: string }> 
         itemId: Number(r.itemId),
         verdict: r.verdict,
         action: r.action,
+        dimension: r.dimension,
         reason: r.reason,
         confidence: r.confidence,
         engine: r.engine,

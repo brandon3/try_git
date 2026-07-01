@@ -58,5 +58,11 @@ CREATE TABLE IF NOT EXISTS preferences (
 );
 `);
 
+// Additive column migrations for existing databases.
+const decisionCols = sqlite.prepare("PRAGMA table_info(decisions)").all() as { name: string }[];
+if (!decisionCols.some((c) => c.name === "dimension")) {
+  sqlite.exec("ALTER TABLE decisions ADD COLUMN dimension TEXT NOT NULL DEFAULT 'other'");
+}
+
 export const db = drizzle(sqlite, { schema });
 export { schema };
