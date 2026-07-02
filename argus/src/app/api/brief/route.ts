@@ -1,38 +1,52 @@
 import { NextResponse } from "next/server";
-import { syncAll } from "@/connectors";
-import { runTriage } from "@/engine/triage";
 import { db, schema } from "@/db";
-import { eq, desc } from "drizzle-orm";
+import { desc, eq, gte, isNull, or } from "drizzle-orm";
+import { runBrief } from "@/engine/brief";
 
-// Overlapping runs (cron firing while the button is tapped) would triage
-// every item twice and race the sync's unique-id checks. Coalesce instead:
-// concurrent requests await the run already in flight and share its result.
-let inFlight: Promise<{ synced: unknown; triage: unknown }> | null = null;
-
-// POST /api/brief — the "morning brief" run: sync sources, triage new items.
+// POST /api/brief — run the brief now (the button; cron uses runBrief directly).
 export async function POST() {
-  if (!inFlight) {
-    inFlight = (async () => {
-      const synced = await syncAll();
-      const triage = await runTriage();
-      return { synced, triage };
-    })().finally(() => {
-      inFlight = null;
-    });
-  }
-  return NextResponse.json(await inFlight);
+  const result = await runBrief("manual");
+  return NextResponse.json(result);
 }
 
-// GET /api/brief — current state for the dashboard.
+// GET /api/brief — today's board: decisions created today plus anything
+// older still awaiting a response (carryover). History stays in the DB;
+// the daily view stays clearable — "all caught up" is reachable every day.
 export async function GET() {
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+
   const rows = db
     .select({
       decision: schema.decisions,
       item: schema.items,
+      action: schema.actions,
     })
     .from(schema.decisions)
     .innerJoin(schema.items, eq(schema.decisions.itemId, schema.items.id))
+    .leftJoin(schema.actions, eq(schema.actions.decisionId, schema.decisions.id))
+    .where(
+      or(
+        gte(schema.decisions.createdAt, startOfToday),
+        isNull(schema.decisions.userResponse),
+      ),
+    )
     .orderBy(desc(schema.decisions.createdAt))
-    .all();
-  return NextResponse.json({ rows });
+    .all()
+    .map(({ decision, item, action }) => ({
+      decision,
+      item,
+      executed: !!action && !action.reversedAt,
+      reversed: !!action?.reversedAt,
+      carryover: decision.createdAt < startOfToday,
+    }));
+
+  const lastBrief = db
+    .select()
+    .from(schema.briefs)
+    .orderBy(desc(schema.briefs.id))
+    .limit(1)
+    .get();
+
+  return NextResponse.json({ rows, lastBrief: lastBrief ?? null });
 }

@@ -134,6 +134,12 @@ export async function triageItems(
   return valid;
 }
 
+// Configurable so the golden set can benchmark models against each other
+// (e.g. ARGUS_TRIAGE_MODEL=claude-sonnet-5 vs the default) on your own
+// decision history before you commit to a cheaper tier.
+export const TRIAGE_MODEL = () =>
+  process.env.ARGUS_TRIAGE_MODEL ?? "claude-opus-4-8";
+
 async function triageWithClaude(
   items: TriageInput[],
   ctx: TriageContext,
@@ -151,7 +157,7 @@ async function triageWithClaude(
   ].filter(Boolean);
 
   const response = await client.messages.parse({
-    model: "claude-opus-4-8",
+    model: TRIAGE_MODEL(),
     max_tokens: 16000,
     thinking: { type: "adaptive" },
     output_config: {
@@ -170,7 +176,7 @@ async function triageWithClaude(
 
   const parsed = response.parsed_output;
   if (!parsed) throw new Error("Triage response failed schema validation");
-  return parsed.triages.map((t) => ({ ...t, engine: "claude-opus-4-8" }));
+  return parsed.triages.map((t) => ({ ...t, engine: TRIAGE_MODEL() }));
 }
 
 // ── Mock engine (sandbox / offline dev) ─────────────────────────────
@@ -265,7 +271,7 @@ export function buildContext(): TriageContext {
   };
 }
 
-export async function runTriage(): Promise<{
+export async function runTriage(briefId?: number): Promise<{
   triaged: number;
   auto: number;
   engine: string;
@@ -302,6 +308,7 @@ export async function runTriage(): Promise<{
         reason: r.reason,
         confidence: r.confidence,
         engine: r.engine,
+        briefId,
         createdAt: new Date(),
       })
       .returning()
@@ -339,7 +346,7 @@ export async function runTriage(): Promise<{
   return {
     triaged: results.length,
     auto,
-    engine: process.env.ANTHROPIC_API_KEY ? "claude-opus-4-8" : "mock",
+    engine: process.env.ANTHROPIC_API_KEY ? TRIAGE_MODEL() : "mock",
   };
 }
 

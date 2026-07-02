@@ -39,6 +39,7 @@ export const decisions = sqliteTable("decisions", {
   userResponse: text("user_response"), // null | 'approved' | 'rejected' | 'acknowledged'
   respondedAt: integer("responded_at", { mode: "timestamp" }),
   autoRuleId: integer("auto_rule_id"), // set when a promoted experiment auto-approved this
+  briefId: integer("brief_id"), // which brief run produced this decision
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 });
 
@@ -59,6 +60,21 @@ export const preferences = sqliteTable("preferences", {
   note: text("note").notNull(),
   learnedFrom: text("learned_from"), // e.g. 'decision:42'
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+});
+
+// One row per brief run — makes "today" a first-class concept and gives the
+// scheduler somewhere to record success/failure for the dashboard.
+export const briefs = sqliteTable("briefs", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  trigger: text("trigger").notNull(), // 'manual' | 'schedule'
+  status: text("status").notNull().default("running"), // 'running' | 'ok' | 'error'
+  error: text("error"),
+  synced: integer("synced").notNull().default(0),
+  triaged: integer("triaged").notNull().default(0),
+  auto: integer("auto").notNull().default(0),
+  engine: text("engine"),
+  ranAt: integer("ran_at", { mode: "timestamp" }).notNull(),
+  finishedAt: integer("finished_at", { mode: "timestamp" }),
 });
 
 // Loop 1 — shadow experiments: automation candidates scored against the

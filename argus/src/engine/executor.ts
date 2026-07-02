@@ -43,6 +43,64 @@ export async function execute(decisionId: number): Promise<string> {
   return result;
 }
 
+// Actions Argus can take back with one tap. Deliberately the same set that
+// promoted rules may auto-execute: autonomy is only granted where undo exists.
+export const REVERSIBLE_ACTIONS = ["archive", "label", "flag"];
+
+// Reverse an executed action. Marks the action row reversed and restores
+// the external state (or logs the no-op for sandbox items).
+export async function undo(decisionId: number): Promise<string> {
+  const action = db
+    .select()
+    .from(schema.actions)
+    .where(eq(schema.actions.decisionId, decisionId))
+    .get();
+  if (!action) throw new Error(`No executed action for decision ${decisionId}`);
+  if (action.reversedAt) throw new Error(`Action already undone`);
+  if (!REVERSIBLE_ACTIONS.includes(action.type))
+    throw new Error(`Action "${action.type}" is not reversible`);
+
+  const decision = db
+    .select()
+    .from(schema.decisions)
+    .where(eq(schema.decisions.id, decisionId))
+    .get();
+  const item = decision
+    ? db.select().from(schema.items).where(eq(schema.items.id, decision.itemId)).get()
+    : undefined;
+  if (!item) throw new Error(`Item for decision ${decisionId} not found`);
+
+  const params = action.payload
+    ? (JSON.parse(action.payload) as Record<string, string>)
+    : {};
+
+  let result: string;
+  if (item.externalId.startsWith("gmail:")) {
+    const messageId = item.externalId.slice("gmail:".length);
+    switch (action.type) {
+      case "archive":
+        result = await gmail.unarchive(messageId);
+        break;
+      case "label":
+        result = await gmail.unlabel(messageId, params.label ?? "Argus");
+        break;
+      case "flag":
+        result = await gmail.unlabel(messageId, "Argus/Needs-you");
+        break;
+      default:
+        throw new Error(`No reverse for ${action.type}`);
+    }
+  } else {
+    result = `sandbox: would reverse ${action.type} on ${item.externalId}`;
+  }
+
+  db.update(schema.actions)
+    .set({ reversedAt: new Date() })
+    .where(eq(schema.actions.id, action.id))
+    .run();
+  return result;
+}
+
 async function perform(
   action: string,
   externalId: string,

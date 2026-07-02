@@ -308,3 +308,47 @@ section h2 {
   font-size: 13px;
 }
 .learnbar .linkbtn { flex-shrink: 0; }
+
+/* ── Appliance polish: progress, banners, undo, mobile ── */
+
+.progress {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--pill-gray);
+  margin: -22px 0 26px;
+  overflow: hidden;
+}
+.progressfill {
+  height: 100%;
+  border-radius: 2px;
+  background: var(--blue);
+  transition: width 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.banner {
+  border-radius: 12px;
+  padding: 11px 16px;
+  font-size: 14px;
+  margin: 0 0 12px;
+}
+.banner.warn { background: rgba(217, 164, 65, 0.14); color: var(--amber); }
+.banner.error { background: rgba(232, 80, 63, 0.12); color: var(--red); }
+.banner a { color: inherit; font-weight: 600; }
+.banner code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+
+.donegroup { display: flex; align-items: center; gap: 10px; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+}
+
+@media (max-width: 620px) {
+  .greeting { font-size: 28px; }
+  .row { flex-wrap: wrap; }
+  .row .body { min-width: 60%; }
+  .row .controls { margin-left: 50px; width: 100%; justify-content: flex-end; }
+  .learnbar { flex-direction: column; align-items: flex-start; }
+}

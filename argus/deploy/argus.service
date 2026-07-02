@@ -1,0 +1,39 @@
+# Argus systemd unit — /etc/systemd/system/argus.service
+#
+#   sudo useradd -r -m -d /var/lib/argus argus     # once
+#   sudo cp deploy/argus.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now argus
+#   journalctl -u argus -f                          # watch the scheduler log
+
+[Unit]
+Description=Argus — personal AI chief of staff
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=argus
+# Clone lives here; run `npm ci && npm run build` in it after every update.
+WorkingDirectory=/var/lib/argus/app/argus
+ExecStart=/usr/bin/npm start
+Restart=on-failure
+RestartSec=5
+
+# Timezone matters: the 7am brief fires in THIS timezone.
+Environment=TZ=America/Los_Angeles
+Environment=NODE_ENV=production
+Environment=ARGUS_DB=/var/lib/argus/argus.db
+# Secrets live in a root-owned env file, not in this unit:
+#   sudo install -m 600 -o argus /dev/null /var/lib/argus/argus.env
+#   (put ANTHROPIC_API_KEY, GOOGLE_*, ARGUS_SECRET, ARGUS_TZ there)
+EnvironmentFile=/var/lib/argus/argus.env
+
+# Hardening (safe defaults for a home box)
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/argus
+
+[Install]
+WantedBy=multi-user.target

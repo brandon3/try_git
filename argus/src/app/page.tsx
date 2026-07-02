@@ -28,9 +28,21 @@ type Row = {
     kind: string;
     title: string;
     from: string | null;
-    occursAt: string | null; // ISO string over JSON
+    occursAt: string | null;
   };
+  executed: boolean;
+  reversed: boolean;
+  carryover: boolean;
 };
+
+type LastBrief = {
+  status: "running" | "ok" | "error";
+  trigger: string;
+  error: string | null;
+  ranAt: string;
+  triaged: number;
+  auto: number;
+} | null;
 
 type Proposal = {
   id: number;
@@ -51,6 +63,8 @@ type Stats = {
   constitution: { version: number; rationale: string; evalScore: number | null } | null;
   goldenCases: number;
   responses: number;
+  engineMode: "claude" | "mock";
+  google: { configured: boolean; connected: boolean };
 };
 
 const SECTIONS: { verdict: Row["decision"]["verdict"]; heading: string }[] = [
@@ -74,6 +88,8 @@ const BADGE_LABEL: Record<string, string> = {
   rejected: "Dismissed",
   acknowledged: "Seen",
 };
+
+const REVERSIBLE = ["archive", "label", "flag"];
 
 const GLYPH: Record<string, string> = { email: "✉️", event: "📅" };
 
@@ -102,13 +118,13 @@ function greeting(): string {
 
 export default function Dashboard() {
   const [rows, setRows] = useState<Row[]>([]);
+  const [lastBrief, setLastBrief] = useState<LastBrief>(null);
   const [running, setRunning] = useState(false);
-  const [engine, setEngine] = useState<string | null>(null);
-  // Decision currently collecting a rejection note (axis 3: rationale).
   const [noteFor, setNoteFor] = useState<number | null>(null);
   const [dimFilter, setDimFilter] = useState<Dimension | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);
   const [reflecting, setReflecting] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   const noteRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -116,8 +132,11 @@ export default function Dashboard() {
       fetch("/api/brief"),
       fetch("/api/stats"),
     ]);
-    setRows((await briefRes.json()).rows);
+    const brief = await briefRes.json();
+    setRows(brief.rows);
+    setLastBrief(brief.lastBrief);
     setStats(await statsRes.json());
+    setLoaded(true);
   }, []);
 
   useEffect(() => {
@@ -131,9 +150,7 @@ export default function Dashboard() {
   async function runBrief() {
     setRunning(true);
     try {
-      const res = await fetch("/api/brief", { method: "POST" });
-      const data = await res.json();
-      setEngine(data.triage.engine);
+      await fetch("/api/brief", { method: "POST" });
       await load();
     } finally {
       setRunning(false);
@@ -152,11 +169,18 @@ export default function Dashboard() {
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
-      // 409 = already responded elsewhere (another tab/device) — reload shows
-      // the truth. Anything else (e.g. execution failed) the user must see.
       if (res.status !== 409) alert(data.error ?? "Something went wrong");
     }
     setNoteFor(null);
+    await load();
+  }
+
+  async function undoAction(id: number) {
+    const res = await fetch(`/api/decisions/${id}/undo`, { method: "POST" });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+      alert(data.error ?? "Undo failed");
+    }
     await load();
   }
 
@@ -199,6 +223,7 @@ export default function Dashboard() {
 
   const reviewed = rows.filter((r) => r.decision.userResponse).length;
   const allReviewed = rows.length > 0 && reviewed === rows.length;
+  const progress = rows.length > 0 ? Math.round((reviewed / rows.length) * 100) : 0;
 
   const dimCounts = rows.reduce(
     (acc, r) => {
@@ -231,14 +256,14 @@ export default function Dashboard() {
       </nav>
 
       <main>
-        <h1 className="greeting">{greeting()}.</h1>
+        <h1 className="greeting">{allReviewed ? "All caught up." : `${greeting()}.`}</h1>
         <p className="summary">
           {today}
           {rows.length > 0 && (
             <>
               {" · "}
               {allReviewed ? (
-                <strong>All {rows.length} decisions reviewed ✓</strong>
+                <strong>all {rows.length} decisions reviewed ✓</strong>
               ) : (
                 <>
                   <strong>
@@ -250,28 +275,32 @@ export default function Dashboard() {
             </>
           )}
         </p>
-
         {rows.length > 0 && (
-          <div className="dims">
-            <button
-              className={`dim ${dimFilter === null ? "active" : ""}`}
-              onClick={() => setDimFilter(null)}
-            >
-              All <span className="dimcount">{rows.length}</span>
-            </button>
-            {DIMENSIONS.filter((d) => dimCounts[d.key]).map((d) => (
-              <button
-                key={d.key}
-                className={`dim ${dimFilter === d.key ? "active" : ""}`}
-                onClick={() => setDimFilter(dimFilter === d.key ? null : d.key)}
-              >
-                {d.emoji} {d.label} <span className="dimcount">{dimCounts[d.key]}</span>
-              </button>
-            ))}
+          <div className="progress" role="progressbar" aria-valuenow={progress}>
+            <div className="progressfill" style={{ width: `${progress}%` }} />
           </div>
         )}
 
-        {rows.length === 0 && (
+        {lastBrief?.status === "error" && (
+          <div className="banner error">
+            The last {lastBrief.trigger === "schedule" ? "scheduled" : ""} brief
+            failed: {lastBrief.error ?? "unknown error"}. Fix and tap Run brief.
+          </div>
+        )}
+        {stats?.google.configured && !stats.google.connected && (
+          <div className="banner warn">
+            Google is configured but not connected.{" "}
+            <a href="/api/auth/google">Connect Gmail &amp; Calendar →</a>
+          </div>
+        )}
+        {stats?.engineMode === "mock" && (
+          <div className="banner warn">
+            Running the mock triage engine — set <code>ANTHROPIC_API_KEY</code> so
+            Claude makes the calls.
+          </div>
+        )}
+
+        {loaded && rows.length === 0 && (
           <div className="empty">
             <div className="symbol">◉</div>
             <h3>Nothing on the watch list</h3>
@@ -309,6 +338,26 @@ export default function Dashboard() {
               ))}
             </div>
           </section>
+        )}
+
+        {rows.length > 0 && (
+          <div className="dims">
+            <button
+              className={`dim ${dimFilter === null ? "active" : ""}`}
+              onClick={() => setDimFilter(null)}
+            >
+              All <span className="dimcount">{rows.length}</span>
+            </button>
+            {DIMENSIONS.filter((d) => dimCounts[d.key]).map((d) => (
+              <button
+                key={d.key}
+                className={`dim ${dimFilter === d.key ? "active" : ""}`}
+                onClick={() => setDimFilter(dimFilter === d.key ? null : d.key)}
+              >
+                {d.emoji} {d.label} <span className="dimcount">{dimCounts[d.key]}</span>
+              </button>
+            ))}
+          </div>
         )}
 
         {SECTIONS.map(({ verdict, heading }) => {
@@ -355,6 +404,7 @@ export default function Dashboard() {
                         {r.item.from && r.item.from !== "calendar" && (
                           <> · {r.item.from}</>
                         )}
+                        {r.carryover && <> · carried over</>}
                       </div>
                       <div className="reason">
                         {r.decision.reason}
@@ -368,8 +418,32 @@ export default function Dashboard() {
                     </div>
                     <div className="controls">
                       {r.decision.userResponse ? (
-                        <span className={`badge ${r.decision.autoRuleId ? "auto" : r.decision.userResponse}`}>
-                          {r.decision.autoRuleId ? "Auto ⚡️" : BADGE_LABEL[r.decision.userResponse]}
+                        <span className="donegroup">
+                          <span
+                            className={`badge ${
+                              r.reversed
+                                ? "rejected"
+                                : r.decision.autoRuleId
+                                  ? "auto"
+                                  : r.decision.userResponse
+                            }`}
+                          >
+                            {r.reversed
+                              ? "Undone"
+                              : r.decision.autoRuleId
+                                ? "Auto ⚡️"
+                                : BADGE_LABEL[r.decision.userResponse]}
+                          </span>
+                          {r.executed &&
+                            !r.reversed &&
+                            REVERSIBLE.includes(r.decision.action) && (
+                              <button
+                                className="linkbtn"
+                                onClick={() => undoAction(r.decision.id)}
+                              >
+                                Undo
+                              </button>
+                            )}
                         </span>
                       ) : noteFor === r.decision.id ? (
                         <div className="notebox">
@@ -448,11 +522,15 @@ export default function Dashboard() {
             Latest reflection: {stats.constitution.rationale}
           </p>
         )}
-
-        {engine && (
+        {lastBrief && lastBrief.status === "ok" && (
           <p className="enginenote">
-            Last brief triaged by {engine}
-            {engine === "mock" && " — set ANTHROPIC_API_KEY to use Claude"}
+            Last brief ({lastBrief.trigger}){" "}
+            {new Date(lastBrief.ranAt).toLocaleString(undefined, {
+              weekday: "short",
+              hour: "numeric",
+              minute: "2-digit",
+            })}
+            : {lastBrief.triaged} triaged, {lastBrief.auto} handled automatically.
           </p>
         )}
       </main>

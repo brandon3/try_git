@@ -82,6 +82,18 @@ CREATE TABLE IF NOT EXISTS golden_cases (
   decision_id INTEGER NOT NULL,
   created_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS briefs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  trigger TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'running',
+  error TEXT,
+  synced INTEGER NOT NULL DEFAULT 0,
+  triaged INTEGER NOT NULL DEFAULT 0,
+  auto INTEGER NOT NULL DEFAULT 0,
+  engine TEXT,
+  ran_at INTEGER NOT NULL,
+  finished_at INTEGER
+);
 `);
 
 // Additive column migrations for existing databases.
@@ -91,6 +103,9 @@ if (!decisionCols.some((c) => c.name === "dimension")) {
 }
 if (!decisionCols.some((c) => c.name === "auto_rule_id")) {
   sqlite.exec("ALTER TABLE decisions ADD COLUMN auto_rule_id INTEGER");
+}
+if (!decisionCols.some((c) => c.name === "brief_id")) {
+  sqlite.exec("ALTER TABLE decisions ADD COLUMN brief_id INTEGER");
 }
 
 export const db = drizzle(sqlite, { schema });

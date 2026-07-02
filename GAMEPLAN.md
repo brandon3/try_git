@@ -140,12 +140,13 @@ The 7am run isn't latency-sensitive → use the Message Batches API (50% off all
 
 ## 6. Roadmap
 
-### Phase 1 — Daily Brief (MVP) · ~2 weekends
-- [ ] Scaffold Next.js + Drizzle + SQLite; deploy target picked
-- [ ] Google OAuth flow, token storage, Gmail + Calendar sync into `items`
-- [ ] Triage engine (schema above), decision log
-- [ ] Dashboard: brief view, approve/reject taps, executor for archive/label/draft/accept/decline
-- [ ] 7am cron via Batch API
+### Phase 1 — Daily Brief (MVP) · BUILT (sandbox)
+- [x] Scaffold Next.js + Drizzle + SQLite; home-server deploy kit (`argus/deploy/`: systemd unit, online-backup script, `.env.example`)
+- [x] Google OAuth flow, token storage, Gmail + Calendar sync into `items` (fixtures stand in until first home run)
+- [x] Triage engine (pure core + Claude/mock), decision log, day-scoped briefs with carryover
+- [x] Dashboard: brief view, approve/reject/acknowledge, batch approve, undo, executor for archive/label/draft/accept/decline
+- [x] 7am cron + 3:30am reflection via node-cron (timezone-explicit); every run recorded and surfaced on failure
+- [x] Single-user auth (ARGUS_SECRET), health banners, loop-math test suite (11 tests)
 - **Done when:** you use it instead of opening Gmail first, three mornings in a row.
 
 ### Phase 2 — The self-improvement loops · BUILT (sandbox)

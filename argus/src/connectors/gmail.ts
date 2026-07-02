@@ -30,35 +30,47 @@ export async function sync(): Promise<{ inserted: number }> {
     maxResults: 50,
   });
 
-  let inserted = 0;
-  for (const ref of list.data.messages ?? []) {
-    const externalId = `gmail:${ref.id}`;
+  // Skip already-imported ids, then fetch the rest in parallel chunks —
+  // serial N+1 fetches make a big inbox sync needlessly slow.
+  const fresh = (list.data.messages ?? []).filter((ref) => {
     const exists = db
       .select({ id: schema.items.id })
       .from(schema.items)
-      .where(eq(schema.items.externalId, externalId))
+      .where(eq(schema.items.externalId, `gmail:${ref.id}`))
       .get();
-    if (exists) continue;
+    return !exists;
+  });
 
-    const msg = await g.gmail.users.messages.get({
-      userId: "me",
-      id: ref.id!,
-      format: "metadata",
-      metadataHeaders: ["Subject", "From"],
-    });
-
-    db.insert(schema.items)
-      .values({
-        sourceId: g.sourceId,
-        externalId,
-        kind: "email",
-        title: header(msg.data, "Subject") ?? "(no subject)",
-        from: header(msg.data, "From"),
-        bodySnippet: msg.data.snippet ?? undefined,
-        createdAt: new Date(),
-      })
-      .run();
-    inserted++;
+  let inserted = 0;
+  const CHUNK = 10;
+  for (let i = 0; i < fresh.length; i += CHUNK) {
+    const chunk = fresh.slice(i, i + CHUNK);
+    const messages = await Promise.all(
+      chunk.map((ref) =>
+        g.gmail.users.messages.get({
+          userId: "me",
+          id: ref.id!,
+          format: "metadata",
+          metadataHeaders: ["Subject", "From"],
+        }),
+      ),
+    );
+    for (const msg of messages) {
+      const result = db
+        .insert(schema.items)
+        .values({
+          sourceId: g.sourceId,
+          externalId: `gmail:${msg.data.id}`,
+          kind: "email",
+          title: header(msg.data, "Subject") ?? "(no subject)",
+          from: header(msg.data, "From"),
+          bodySnippet: msg.data.snippet ?? undefined,
+          createdAt: new Date(),
+        })
+        .onConflictDoNothing()
+        .run();
+      if (result.changes > 0) inserted++;
+    }
   }
   return { inserted };
 }
@@ -74,6 +86,17 @@ export async function archive(messageId: string): Promise<string> {
     requestBody: { removeLabelIds: ["INBOX"] },
   });
   return `archived gmail message ${messageId}`;
+}
+
+export async function unarchive(messageId: string): Promise<string> {
+  const g = api();
+  if (!g) throw new Error("Gmail not connected");
+  await g.gmail.users.messages.modify({
+    userId: "me",
+    id: messageId,
+    requestBody: { addLabelIds: ["INBOX"] },
+  });
+  return `restored gmail message ${messageId} to inbox`;
 }
 
 export async function label(messageId: string, labelName: string): Promise<string> {
@@ -94,6 +117,21 @@ export async function label(messageId: string, labelName: string): Promise<strin
     requestBody: { addLabelIds: [labelId] },
   });
   return `labeled gmail message ${messageId} as ${labelName}`;
+}
+
+export async function unlabel(messageId: string, labelName: string): Promise<string> {
+  const g = api();
+  if (!g) throw new Error("Gmail not connected");
+  const labels = await g.gmail.users.labels.list({ userId: "me" });
+  const labelId = labels.data.labels?.find((l) => l.name === labelName)?.id;
+  if (labelId) {
+    await g.gmail.users.messages.modify({
+      userId: "me",
+      id: messageId,
+      requestBody: { removeLabelIds: [labelId] },
+    });
+  }
+  return `removed label ${labelName} from gmail message ${messageId}`;
 }
 
 // Creates a draft in the thread — never sends. Sending stays a human act.
