@@ -249,9 +249,14 @@ export default function Dashboard() {
           <div className="brand">
             <span className="eye">◉</span> Argus
           </div>
-          <button className="cta" onClick={runBrief} disabled={running}>
-            {running ? "Watching…" : "Run brief"}
-          </button>
+          <div className="navactions">
+            <a className="linkbtn" href="/history">
+              History
+            </a>
+            <button className="cta" onClick={runBrief} disabled={running}>
+              {running ? "Watching…" : "Run brief"}
+            </button>
+          </div>
         </div>
       </nav>
 
