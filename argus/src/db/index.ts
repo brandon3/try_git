@@ -56,12 +56,41 @@ CREATE TABLE IF NOT EXISTS preferences (
   learned_from TEXT,
   created_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS experiments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  matcher_from TEXT NOT NULL,
+  predicted_action TEXT NOT NULL,
+  hits INTEGER NOT NULL DEFAULT 0,
+  agreements INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'shadow',
+  created_at INTEGER NOT NULL,
+  promoted_at INTEGER
+);
+CREATE TABLE IF NOT EXISTS constitution (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  content TEXT NOT NULL,
+  rationale TEXT NOT NULL,
+  eval_score INTEGER,
+  status TEXT NOT NULL DEFAULT 'active',
+  created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS golden_cases (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  item_json TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  action TEXT NOT NULL,
+  decision_id INTEGER NOT NULL,
+  created_at INTEGER NOT NULL
+);
 `);
 
 // Additive column migrations for existing databases.
 const decisionCols = sqlite.prepare("PRAGMA table_info(decisions)").all() as { name: string }[];
 if (!decisionCols.some((c) => c.name === "dimension")) {
   sqlite.exec("ALTER TABLE decisions ADD COLUMN dimension TEXT NOT NULL DEFAULT 'other'");
+}
+if (!decisionCols.some((c) => c.name === "auto_rule_id")) {
+  sqlite.exec("ALTER TABLE decisions ADD COLUMN auto_rule_id INTEGER");
 }
 
 export const db = drizzle(sqlite, { schema });

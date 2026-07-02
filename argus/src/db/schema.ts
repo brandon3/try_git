@@ -36,8 +36,9 @@ export const decisions = sqliteTable("decisions", {
   confidence: text("confidence").notNull(), // 'low' | 'medium' | 'high'
   dimension: text("dimension").notNull().default("other"), // 'wealth' | 'health' | 'happiness' | 'relationships' | 'home' | 'work' | 'other'
   engine: text("engine").notNull(), // 'claude-opus-4-8' | 'mock'
-  userResponse: text("user_response"), // null | 'approved' | 'rejected'
+  userResponse: text("user_response"), // null | 'approved' | 'rejected' | 'acknowledged'
   respondedAt: integer("responded_at", { mode: "timestamp" }),
+  autoRuleId: integer("auto_rule_id"), // set when a promoted experiment auto-approved this
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 });
 
@@ -57,5 +58,41 @@ export const preferences = sqliteTable("preferences", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   note: text("note").notNull(),
   learnedFrom: text("learned_from"), // e.g. 'decision:42'
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+});
+
+// Loop 1 — shadow experiments: automation candidates scored against the
+// user's real decisions before they're ever allowed to act.
+// shadow → proposed (evidence threshold met) → promoted (user approved) → retired
+export const experiments = sqliteTable("experiments", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  matcherFrom: text("matcher_from").notNull(), // exact sender/organizer match
+  predictedAction: text("predicted_action").notNull(),
+  hits: integer("hits").notNull().default(0),
+  agreements: integer("agreements").notNull().default(0),
+  status: text("status").notNull().default("shadow"), // 'shadow' | 'proposed' | 'promoted' | 'retired'
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  promotedAt: integer("promoted_at", { mode: "timestamp" }),
+});
+
+// Loop 2 — the constitution: a versioned, Argus-maintained distillation of
+// how the user wants their life run. The active row is injected into triage.
+export const constitution = sqliteTable("constitution", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  content: text("content").notNull(),
+  rationale: text("rationale").notNull(),
+  evalScore: integer("eval_score"), // 0-100, score against the golden set at adoption
+  status: text("status").notNull().default("active"), // 'active' | 'superseded' | 'rejected'
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+});
+
+// Loop 3 — golden set: every user response becomes a labeled test case that
+// gates future changes to the triage prompt/constitution.
+export const goldenCases = sqliteTable("golden_cases", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  itemJson: text("item_json").notNull(), // snapshot: {kind,title,from,snippet}
+  kind: text("kind").notNull(), // 'positive' (user approved action) | 'negative' (user rejected action)
+  action: text("action").notNull(),
+  decisionId: integer("decision_id").notNull(),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 });

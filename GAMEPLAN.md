@@ -148,10 +148,26 @@ The 7am run isn't latency-sensitive → use the Message Batches API (50% off all
 - [ ] 7am cron via Batch API
 - **Done when:** you use it instead of opening Gmail first, three mornings in a row.
 
-### Phase 2 — Memory & the trust ladder · ~1–2 weekends
-- [ ] Feed decision history back: weekly job summarizes approvals/rejections into `preferences`
-- [ ] Rule promotion UX: "you've approved this 10× — automate it?"
-- [ ] Autonomy levels enforced in executor; settings page
+### Phase 2 — The self-improvement loops · BUILT (sandbox)
+Four recursive loops, sharing one invariant: **nothing self-promotes** —
+evidence accumulates silently, and crossing a threshold produces a proposal
+in the brief, never an autonomous grant of autonomy.
+- [x] **Shadow experiments** (trust ladder, done empirically): repeated identical
+      approvals spawn an experiment that silently predicts your decisions; at
+      3/3+ agreement it proposes itself ("Promote?"); promoted rules auto-execute
+      reversible actions only (archive/label/flag), and demote themselves back to
+      shadow if their agreement rate decays below 80%.
+- [x] **Nightly reflection → constitution**: a second Claude pass distills your
+      responses and notes into a versioned "constitution" injected into every
+      triage. Every rewrite is gated by the golden set and kept as an auditable
+      version — Argus edits its own instructions, never invisibly.
+- [x] **Golden-set evals**: every approve/reject becomes a labeled test case;
+      candidate constitutions are replayed against the set in shadow and adopted
+      only if they don't regress past decisions. The system's mistakes police its
+      future self-modifications.
+- [x] **Calibration**: measured accuracy per confidence bucket (manual responses
+      only — auto-approvals can't grade their own homework), fed back into the
+      triage prompt once n≥5 per bucket.
 - **Done when:** ≥50% of routine email is handled without a tap.
 
 ### Phase 3 — Proactive mode · ~2 weekends

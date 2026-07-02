@@ -53,6 +53,21 @@ src/engine/      triage (Claude/mock) · executor (trust ladder lives here)
 src/app/         dashboard UI + API routes
 ```
 
+## Self-improvement loops
+
+Argus learns from every tap, but **nothing self-promotes**:
+
+- **Shadow experiments** — repeated identical approvals spawn a hidden
+  predictor; at 3/3+ agreement it appears in your brief as "Promote?".
+  Promoted rules auto-run reversible actions only and demote themselves
+  if their agreement rate decays.
+- **Reflection** (`POST /api/reflect`, cron it nightly) — distills your
+  responses into a versioned constitution injected into triage.
+- **Golden-set evals** — your responses become the regression suite that
+  gates every constitution rewrite.
+- **Calibration** — measured accuracy per confidence bucket, fed back into
+  the prompt. `GET /api/stats` shows all of it.
+
 ## Safety model
 
 - The model proposes actions from a fixed enum only; `send`/`delete` aren't in it.

@@ -21,14 +21,36 @@ type Row = {
     confidence: string;
     engine: string;
     userResponse: string | null;
+    autoRuleId: number | null;
   };
   item: {
     id: number;
     kind: string;
     title: string;
     from: string | null;
-    occursAt: number | null;
+    occursAt: string | null; // ISO string over JSON
   };
+};
+
+type Proposal = {
+  id: number;
+  matcherFrom: string;
+  predictedAction: string;
+  agreements: number;
+  hits: number;
+};
+
+type Stats = {
+  experiments: {
+    shadow: number;
+    proposed: Proposal[];
+    promoted: Proposal[];
+    retired: number;
+  };
+  calibration: Record<"high" | "medium" | "low", { n: number; accuracy: number }>;
+  constitution: { version: number; rationale: string; evalScore: number | null } | null;
+  goldenCases: number;
+  responses: number;
 };
 
 const SECTIONS: { verdict: Row["decision"]["verdict"]; heading: string }[] = [
@@ -85,12 +107,17 @@ export default function Dashboard() {
   // Decision currently collecting a rejection note (axis 3: rationale).
   const [noteFor, setNoteFor] = useState<number | null>(null);
   const [dimFilter, setDimFilter] = useState<Dimension | null>(null);
+  const [stats, setStats] = useState<Stats | null>(null);
+  const [reflecting, setReflecting] = useState(false);
   const noteRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
-    const res = await fetch("/api/brief");
-    const data = await res.json();
-    setRows(data.rows);
+    const [briefRes, statsRes] = await Promise.all([
+      fetch("/api/brief"),
+      fetch("/api/stats"),
+    ]);
+    setRows((await briefRes.json()).rows);
+    setStats(await statsRes.json());
   }, []);
 
   useEffect(() => {
@@ -149,6 +176,25 @@ export default function Dashboard() {
 
   function submitNote(id: number) {
     void respond(id, "rejected", noteRef.current?.value ?? "");
+  }
+
+  async function resolveProposal(id: number, verdict: "promote" | "retire") {
+    await fetch(`/api/experiments/${id}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ verdict }),
+    });
+    await load();
+  }
+
+  async function reflect() {
+    setReflecting(true);
+    try {
+      await fetch("/api/reflect", { method: "POST" });
+      await load();
+    } finally {
+      setReflecting(false);
+    }
   }
 
   const reviewed = rows.filter((r) => r.decision.userResponse).length;
@@ -233,6 +279,38 @@ export default function Dashboard() {
           </div>
         )}
 
+        {stats && stats.experiments.proposed.length > 0 && (
+          <section>
+            <h2>Argus proposes</h2>
+            <div className="group">
+              {stats.experiments.proposed.map((p) => (
+                <div className="row" key={`prop-${p.id}`}>
+                  <div className="glyph handle">⚡️</div>
+                  <div className="body">
+                    <div className="title">
+                      Always {ACTION_LABEL[p.predictedAction] ?? p.predictedAction} mail from{" "}
+                      {p.matcherFrom}?
+                    </div>
+                    <div className="reason">
+                      I&apos;ve matched your decision {p.agreements}/{p.hits} times on this.
+                      Promoted rules only run reversible actions and demote themselves
+                      if your behavior changes.
+                    </div>
+                  </div>
+                  <div className="controls">
+                    <button className="pill approve" onClick={() => resolveProposal(p.id, "promote")}>
+                      Promote
+                    </button>
+                    <button className="pill reject" onClick={() => resolveProposal(p.id, "retire")}>
+                      Not now
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
         {SECTIONS.map(({ verdict, heading }) => {
           const group = visible.filter((r) => r.decision.verdict === verdict);
           if (group.length === 0) return null;
@@ -262,6 +340,18 @@ export default function Dashboard() {
                           {DIM_META[r.decision.dimension].emoji}{" "}
                           {DIM_META[r.decision.dimension].label}
                         </span>
+                        {r.item.occursAt && (
+                          <>
+                            {" · "}
+                            {new Date(r.item.occursAt).toLocaleString(undefined, {
+                              weekday: "short",
+                              month: "short",
+                              day: "numeric",
+                              hour: "numeric",
+                              minute: "2-digit",
+                            })}
+                          </>
+                        )}
                         {r.item.from && r.item.from !== "calendar" && (
                           <> · {r.item.from}</>
                         )}
@@ -278,8 +368,8 @@ export default function Dashboard() {
                     </div>
                     <div className="controls">
                       {r.decision.userResponse ? (
-                        <span className={`badge ${r.decision.userResponse}`}>
-                          {BADGE_LABEL[r.decision.userResponse]}
+                        <span className={`badge ${r.decision.autoRuleId ? "auto" : r.decision.userResponse}`}>
+                          {r.decision.autoRuleId ? "Auto ⚡️" : BADGE_LABEL[r.decision.userResponse]}
                         </span>
                       ) : noteFor === r.decision.id ? (
                         <div className="notebox">
@@ -329,6 +419,35 @@ export default function Dashboard() {
             </section>
           );
         })}
+
+        {stats && (
+          <div className="learnbar">
+            <span>
+              {stats.experiments.promoted.length} auto-rule
+              {stats.experiments.promoted.length === 1 ? "" : "s"} live ·{" "}
+              {stats.experiments.shadow} shadowing · {stats.goldenCases} golden cases
+              {stats.constitution && (
+                <>
+                  {" · "}constitution v{stats.constitution.version}
+                  {stats.constitution.evalScore !== null &&
+                    ` (evals ${stats.constitution.evalScore}%)`}
+                </>
+              )}
+              {stats.calibration.high.n >= 5 && (
+                <> · high-confidence accuracy {stats.calibration.high.accuracy}%</>
+              )}
+            </span>
+            <button className="linkbtn" onClick={reflect} disabled={reflecting}>
+              {reflecting ? "Reflecting…" : "Run reflection"}
+            </button>
+          </div>
+        )}
+
+        {stats?.constitution && (
+          <p className="enginenote" title={stats.constitution.rationale}>
+            Latest reflection: {stats.constitution.rationale}
+          </p>
+        )}
 
         {engine && (
           <p className="enginenote">

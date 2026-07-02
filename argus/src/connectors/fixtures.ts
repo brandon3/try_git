@@ -134,6 +134,55 @@ const FIXTURES: Fixture[] = [
     from: "presale@tickets.example.com",
     bodySnippet: "Your artist presale starts Thursday 10am. Code: HIGHVIOLET.",
   },
+  // Repeats from the same sender — the raw material for the shadow-experiment
+  // loop: approve archiving these a few times and Argus notices the pattern.
+  {
+    externalId: "em-012",
+    kind: "email",
+    title: "This week in AI — Issue #205",
+    from: "newsletter@aidigest.io",
+    bodySnippet: "Top stories: eval harnesses, agents in production... Unsubscribe at any time.",
+  },
+  {
+    externalId: "em-013",
+    kind: "email",
+    title: "This week in AI — Issue #206",
+    from: "newsletter@aidigest.io",
+    bodySnippet: "Top stories: long-context tricks, memory patterns... Unsubscribe at any time.",
+  },
+  {
+    externalId: "em-014",
+    kind: "email",
+    title: "This week in AI — Issue #207",
+    from: "newsletter@aidigest.io",
+    bodySnippet: "Top stories: multi-agent orchestration... Unsubscribe at any time.",
+  },
+  {
+    externalId: "em-015",
+    kind: "email",
+    title: "This week in AI — Issue #208",
+    from: "newsletter@aidigest.io",
+    bodySnippet: "Top stories: structured outputs everywhere... Unsubscribe at any time.",
+  },
+];
+
+// "The next morning": arrives only after everything above has been synced,
+// so a second brief run demonstrates promoted rules auto-executing.
+const WAVE_2: Fixture[] = [
+  {
+    externalId: "em-016",
+    kind: "email",
+    title: "This week in AI — Issue #209",
+    from: "newsletter@aidigest.io",
+    bodySnippet: "Top stories: the agentic web... Unsubscribe at any time.",
+  },
+  {
+    externalId: "em-017",
+    kind: "email",
+    title: "FLASH SALE: 60% off — today only!",
+    from: "deals@megastore.shop",
+    bodySnippet: "Biggest discounts of the season. Shop now before it's gone.",
+  },
 ];
 
 export async function sync(): Promise<{ inserted: number }> {
@@ -150,27 +199,34 @@ export async function sync(): Promise<{ inserted: number }> {
       .get();
   }
 
-  let inserted = 0;
-  for (const f of FIXTURES) {
-    const exists = db
-      .select({ id: schema.items.id })
-      .from(schema.items)
-      .where(eq(schema.items.externalId, f.externalId))
-      .get();
-    if (exists) continue;
-    db.insert(schema.items)
-      .values({
-        sourceId: source.id,
-        externalId: f.externalId,
-        kind: f.kind,
-        title: f.title,
-        from: f.from,
-        bodySnippet: f.bodySnippet,
-        occursAt: f.occursAt,
-        createdAt: new Date(),
-      })
-      .run();
-    inserted++;
-  }
+  const insertMissing = (fixtures: Fixture[]) => {
+    let inserted = 0;
+    for (const f of fixtures) {
+      const exists = db
+        .select({ id: schema.items.id })
+        .from(schema.items)
+        .where(eq(schema.items.externalId, f.externalId))
+        .get();
+      if (exists) continue;
+      db.insert(schema.items)
+        .values({
+          sourceId: source.id,
+          externalId: f.externalId,
+          kind: f.kind,
+          title: f.title,
+          from: f.from,
+          bodySnippet: f.bodySnippet,
+          occursAt: f.occursAt,
+          createdAt: new Date(),
+        })
+        .run();
+      inserted++;
+    }
+    return inserted;
+  };
+
+  // Wave 1 first; wave 2 ("the next morning") only once wave 1 is in.
+  let inserted = insertMissing(FIXTURES);
+  if (inserted === 0) inserted = insertMissing(WAVE_2);
   return { inserted };
 }

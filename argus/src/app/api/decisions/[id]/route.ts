@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { db, schema } from "@/db";
 import { eq } from "drizzle-orm";
 import { execute } from "@/engine/executor";
+import { captureGolden } from "@/engine/evals";
+import { scoreOnResponse, maybeCreateFromHistory } from "@/engine/experiments";
 
 // POST /api/decisions/:id  { response: "approved" | "rejected" | "acknowledged", note?: string }
 //
@@ -71,6 +73,20 @@ export async function POST(
       .set({ userResponse: response, respondedAt: new Date() })
       .where(eq(schema.decisions.id, decision.id))
       .run();
+  }
+
+  // Feed the learning loops. Every manual response is signal: it becomes a
+  // golden-set case (loop 3), scores any matching shadow experiments
+  // (loop 1), and — on approvals — may reveal a pattern worth shadowing.
+  const item = db
+    .select()
+    .from(schema.items)
+    .where(eq(schema.items.id, decision.itemId))
+    .get();
+  if (item) {
+    captureGolden(item, decision, response);
+    scoreOnResponse(item, decision, response);
+    if (response === "approved") maybeCreateFromHistory(item, decision);
   }
 
   // Rejections always teach; an explicit note teaches more. Acknowledgements
