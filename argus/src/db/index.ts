@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS items (
   from_addr TEXT,
   body_snippet TEXT,
   occurs_at INTEGER,
+  authenticated INTEGER,
   status TEXT NOT NULL DEFAULT 'new',
   created_at INTEGER NOT NULL
 );
@@ -106,6 +107,10 @@ if (!decisionCols.some((c) => c.name === "auto_rule_id")) {
 }
 if (!decisionCols.some((c) => c.name === "brief_id")) {
   sqlite.exec("ALTER TABLE decisions ADD COLUMN brief_id INTEGER");
+}
+const itemCols = sqlite.prepare("PRAGMA table_info(items)").all() as { name: string }[];
+if (!itemCols.some((c) => c.name === "authenticated")) {
+  sqlite.exec("ALTER TABLE items ADD COLUMN authenticated INTEGER");
 }
 
 export const db = drizzle(sqlite, { schema });

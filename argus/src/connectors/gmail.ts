@@ -18,6 +18,14 @@ function header(msg: gmail_v1.Schema$Message, name: string): string | undefined 
   )?.value ?? undefined;
 }
 
+// Only DMARC-passing mail is eligible for auto-execution: a From header alone
+// is trivially spoofable, so trust earned by a sender must not transfer to an
+// attacker who forges that sender. Gmail evaluates SPF/DKIM/DMARC and records
+// the result in Authentication-Results.
+function dmarcPass(authResults: string | undefined): boolean {
+  return !!authResults && /dmarc=pass/i.test(authResults);
+}
+
 export async function sync(): Promise<{ inserted: number }> {
   const g = api();
   if (!g) return { inserted: 0 };
@@ -51,7 +59,7 @@ export async function sync(): Promise<{ inserted: number }> {
           userId: "me",
           id: ref.id!,
           format: "metadata",
-          metadataHeaders: ["Subject", "From"],
+          metadataHeaders: ["Subject", "From", "Authentication-Results"],
         }),
       ),
     );
@@ -65,6 +73,7 @@ export async function sync(): Promise<{ inserted: number }> {
           title: header(msg.data, "Subject") ?? "(no subject)",
           from: header(msg.data, "From"),
           bodySnippet: msg.data.snippet ?? undefined,
+          authenticated: dmarcPass(header(msg.data, "Authentication-Results")),
           createdAt: new Date(),
         })
         .onConflictDoNothing()

@@ -21,6 +21,10 @@ export const items = sqliteTable("items", {
   from: text("from_addr"),
   bodySnippet: text("body_snippet"),
   occursAt: integer("occurs_at", { mode: "timestamp" }),
+  // Sender authentication (DMARC pass). null = unknown. Auto-execution
+  // requires this to be true — trust must key on a verified sender, not the
+  // spoofable From header. See SECURITY.md (branch steering / spoofed trust).
+  authenticated: integer("authenticated", { mode: "boolean" }),
   status: text("status").notNull().default("new"), // 'new' | 'triaged'
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 });

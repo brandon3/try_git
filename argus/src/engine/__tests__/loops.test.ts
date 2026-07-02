@@ -11,7 +11,7 @@ import {
 import { captureGolden, runEvals } from "../evals";
 import { computeCalibration } from "../calibration";
 import { runReflection } from "../reflect";
-import { triageItems } from "../triage";
+import { triageItems, runTriage } from "../triage";
 import { execute, undo } from "../executor";
 
 // The four self-improvement loops modify Argus's own behavior — this suite
@@ -196,6 +196,63 @@ describe("loop 4 — calibration", () => {
     const c = computeCalibration();
     expect(c.low.n).toBe(3);
     expect(c.low.accuracy).toBe(67);
+  });
+});
+
+describe("security — auto-execution gating", () => {
+  const SENDER = "newsletter@sec.example.com";
+
+  it("auto-executes for a promoted rule only on DMARC-verified senders", async () => {
+    // Promote an archive rule for the sender.
+    db.insert(schema.experiments)
+      .values({
+        matcherFrom: SENDER,
+        predictedAction: "archive",
+        status: "promoted",
+        promotedAt: new Date(),
+        createdAt: new Date(),
+      })
+      .run();
+
+    // Two fresh newsletters from that sender — one authenticated, one not.
+    db.insert(schema.items)
+      .values({
+        sourceId: 1,
+        externalId: "auth-yes",
+        kind: "email",
+        title: "This week in AI — Issue #500",
+        from: SENDER,
+        bodySnippet: "unsubscribe at any time",
+        authenticated: true,
+        status: "new",
+        createdAt: new Date(),
+      })
+      .run();
+    db.insert(schema.items)
+      .values({
+        sourceId: 1,
+        externalId: "auth-no",
+        kind: "email",
+        title: "This week in AI — Issue #501",
+        from: SENDER, // spoofed From — DMARC did not pass
+        bodySnippet: "unsubscribe at any time",
+        authenticated: false,
+        status: "new",
+        createdAt: new Date(),
+      })
+      .run();
+
+    const result = await runTriage();
+    expect(result.auto).toBe(1); // only the verified one
+
+    const yes = db.select().from(schema.items).where(eq(schema.items.externalId, "auth-yes")).get()!;
+    const no = db.select().from(schema.items).where(eq(schema.items.externalId, "auth-no")).get()!;
+    const dYes = db.select().from(schema.decisions).where(eq(schema.decisions.itemId, yes.id)).get()!;
+    const dNo = db.select().from(schema.decisions).where(eq(schema.decisions.itemId, no.id)).get()!;
+
+    expect(dYes.userResponse).toBe("approved");
+    expect(dYes.autoRuleId).not.toBeNull();
+    expect(dNo.userResponse).toBeNull(); // spoofed sender falls through to manual
   });
 });
 

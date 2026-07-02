@@ -217,6 +217,7 @@ export async function sync(): Promise<{ inserted: number }> {
           from: f.from,
           bodySnippet: f.bodySnippet,
           occursAt: f.occursAt,
+          authenticated: true, // sandbox fixtures are a trusted local source
           createdAt: new Date(),
         })
         .run();
