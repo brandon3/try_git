@@ -8,7 +8,11 @@ import { eq } from "drizzle-orm";
 //
 // Setup at home (one time):
 //   1. Google Cloud console → create project → enable Gmail API + Calendar API
-//   2. OAuth consent screen: "Testing" mode, add yourself as a test user
+//   2. OAuth consent screen: set publishing status to "In production".
+//      Do NOT leave it in "Testing" — Google expires refresh tokens after
+//      7 days for testing-status apps, which would silently break Argus
+//      weekly. Production status shows a one-time "unverified app" warning
+//      during consent (fine for personal use) and tokens don't expire.
 //   3. Create OAuth client (Web application), redirect URI:
 //      http://<home-server>:3000/api/auth/callback
 //   4. Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI

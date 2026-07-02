@@ -27,7 +27,10 @@ adaptive thinking, cached system prompt) automatically.
 ## Connect real Gmail + Calendar (home server)
 
 1. Google Cloud console → new project → enable **Gmail API** and **Calendar API**
-2. OAuth consent screen → *Testing* mode → add yourself as a test user
+2. OAuth consent screen → publishing status **In production** (⚠️ not *Testing*:
+   Google expires refresh tokens after 7 days for testing-status apps, which
+   silently breaks Argus weekly. Production shows a one-time "unverified app"
+   warning during consent — fine for personal use — and tokens persist.)
 3. Credentials → OAuth client (*Web application*) → redirect URI:
    `http://<home-server>:3000/api/auth/callback`
 4. ```sh

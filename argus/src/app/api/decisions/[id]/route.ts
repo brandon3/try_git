@@ -33,14 +33,44 @@ export async function POST(
     return NextResponse.json({ error: "decision not found" }, { status: 404 });
   }
 
-  db.update(schema.decisions)
-    .set({ userResponse: response, respondedAt: new Date() })
-    .where(eq(schema.decisions.id, Number(id)))
-    .run();
+  // A decision takes exactly one response, ever. Re-submissions are rejected
+  // so an action can never run twice and the audit trail can't be rewritten
+  // after execution. (This check + the claim below run synchronously in one
+  // event-loop tick, so concurrent requests can't both pass.)
+  if (decision.userResponse) {
+    return NextResponse.json(
+      { error: `decision already ${decision.userResponse}` },
+      { status: 409 },
+    );
+  }
 
   let executed: string | null = null;
   if (response === "approved" && decision.action !== "none") {
-    executed = await execute(Number(id));
+    // Claim first (so a concurrent request 409s), then execute. If execution
+    // fails, release the claim: the decision returns to pending — audit stays
+    // truthful (no action row, not marked done) and the user can retry.
+    db.update(schema.decisions)
+      .set({ userResponse: "approved", respondedAt: new Date() })
+      .where(eq(schema.decisions.id, decision.id))
+      .run();
+    try {
+      executed = await execute(decision.id);
+    } catch (err) {
+      db.update(schema.decisions)
+        .set({ userResponse: null, respondedAt: null })
+        .where(eq(schema.decisions.id, decision.id))
+        .run();
+      const message = err instanceof Error ? err.message : String(err);
+      return NextResponse.json(
+        { error: `execution failed: ${message}` },
+        { status: 502 },
+      );
+    }
+  } else {
+    db.update(schema.decisions)
+      .set({ userResponse: response, respondedAt: new Date() })
+      .where(eq(schema.decisions.id, decision.id))
+      .run();
   }
 
   // Rejections always teach; an explicit note teaches more. Acknowledgements

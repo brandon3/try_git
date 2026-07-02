@@ -6,7 +6,7 @@ A personal web app where AI runs the parts of your life you don't want to pay at
 
 **The persona:** Argus Panoptes, the hundred-eyed giant of Greek myth who never fully slept — some eyes always kept watch. That's the product in one image: it watches everything so you don't have to. The persona carries into the UI voice ("Argus has eyes on it", "Nothing needs you today") and the triage system prompt, which frames the model as a vigilant, understated steward — observant, brief, never dramatic.
 
-**Deployment decision (settled):** runs on a home server — an always-on Node process with local SQLite and node-cron for the 7am brief. No cloud hosting; Google OAuth stays in testing mode with you as the only user.
+**Deployment decision (settled):** runs on a home server — an always-on Node process with local SQLite and node-cron for the 7am brief. No cloud hosting; the Google OAuth app is published to “In production” status (testing status expires refresh tokens every 7 days) with you as the only real user.
 
 ---
 
@@ -71,7 +71,7 @@ Auto-send anything, bank/finance integration, multi-user, mobile app, non-Google
 | **Next.js + TypeScript** | One codebase for UI + API routes; huge ecosystem; easy to deploy anywhere later. |
 | **SQLite + Drizzle** | Single-user personal tool — no reason to run a DB server. One file, trivially backed up. Drizzle for typed queries + migrations. |
 | **`@anthropic-ai/sdk`** | The decision engine. Tool use + structured outputs do the heavy lifting (details in §5). |
-| **Google APIs (`googleapis`)** | OAuth 2.0 with offline refresh token, stored encrypted. "Testing" mode on the OAuth consent screen is fine — it's just you. |
+| **Google APIs (`googleapis`)** | OAuth 2.0 with offline refresh token, stored encrypted. Consent screen published to “In production” — testing status expires refresh tokens after 7 days and would break Argus weekly; the one-time unverified-app warning is fine for personal use. |
 | **node-cron on the home server** | An always-on Node process at home runs the 7am brief and syncs. Keeps tokens and email data entirely on your own hardware — no cloud host to trust. |
 | **Tailwind + shadcn/ui** | Fast, clean dashboard UI without design overhead. |
 
@@ -187,7 +187,7 @@ The 7am run isn't latency-sensitive → use the Message Batches API (50% off all
 
 1. `npx create-next-app argus --typescript --tailwind`
 2. Add Drizzle + SQLite, define the §4 schema, run first migration
-3. Google Cloud project → OAuth client (testing mode) → get Gmail+Calendar consent working. Set the redirect URI to the home server's address (e.g. `http://argus.local:3000/api/auth/callback` or a Tailscale hostname) — do the one-time consent from a browser on your network.
+3. Google Cloud project → OAuth client, consent screen published to “In production” (not testing — 7-day token expiry) → get Gmail+Calendar consent working. Set the redirect URI to the home server's address (e.g. `http://argus.local:3000/api/auth/callback` or a Tailscale hostname) — do the one-time consent from a browser on your network.
 4. Hardcode one triage call against 10 real emails; eyeball the verdicts
 5. If the verdicts feel right → build the dashboard. If not → tune the prompt first. The triage quality is the product; everything else is plumbing.
 

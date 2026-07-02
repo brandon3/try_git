@@ -118,11 +118,17 @@ export default function Dashboard() {
     response: "approved" | "rejected" | "acknowledged",
     note?: string,
   ) {
-    await fetch(`/api/decisions/${id}`, {
+    const res = await fetch(`/api/decisions/${id}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ response, note }),
     });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+      // 409 = already responded elsewhere (another tab/device) — reload shows
+      // the truth. Anything else (e.g. execution failed) the user must see.
+      if (res.status !== 409) alert(data.error ?? "Something went wrong");
+    }
     setNoteFor(null);
     await load();
   }
