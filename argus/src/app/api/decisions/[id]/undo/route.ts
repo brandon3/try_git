@@ -30,18 +30,27 @@ export async function POST(
     );
   }
 
-  let reversed: string;
-  try {
-    reversed = await undo(decision.id);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ error: message }, { status: 409 });
-  }
-
+  // Claim first, mirroring the approve path: flip to rejected synchronously
+  // (same event-loop tick as the check above) so a concurrent duplicate
+  // request — e.g. a double-clicked Undo button — 409s instead of running the
+  // whole undo path twice and double-feeding the learning loops. Rolled back
+  // if the actual reversal fails.
   db.update(schema.decisions)
     .set({ userResponse: "rejected", respondedAt: new Date() })
     .where(eq(schema.decisions.id, decision.id))
     .run();
+
+  let reversed: string;
+  try {
+    reversed = await undo(decision.id);
+  } catch (err) {
+    db.update(schema.decisions)
+      .set({ userResponse: "approved", respondedAt: decision.respondedAt })
+      .where(eq(schema.decisions.id, decision.id))
+      .run();
+    const message = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: message }, { status: 409 });
+  }
 
   const item = db
     .select()

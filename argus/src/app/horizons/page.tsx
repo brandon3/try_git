@@ -34,13 +34,21 @@ export default function Horizons() {
   const [saved, setSaved] = useState<Horizon[]>([]);
   const [scanning, setScanning] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [loadError, setLoadError] = useState(false);
 
   const load = useCallback(async () => {
-    const res = await fetch("/api/horizons");
-    const data = await res.json();
-    setOpen(data.open);
-    setSaved(data.saved);
-    setLoaded(true);
+    try {
+      const res = await fetch("/api/horizons");
+      if (!res.ok) throw new Error("bad status");
+      const data = await res.json();
+      setOpen(data.open);
+      setSaved(data.saved);
+      setLoadError(false);
+    } catch {
+      setLoadError(true);
+    } finally {
+      setLoaded(true);
+    }
   }, []);
 
   useEffect(() => {
@@ -91,7 +99,15 @@ export default function Horizons() {
           quiet corners of your life and the open space on your calendar.
         </p>
 
-        {loaded && open.length === 0 && (
+        {loadError && (
+          <div className="banner error">
+            Couldn&apos;t reach Argus — is the server up?{" "}
+            <button className="linkbtn" onClick={() => void load()}>
+              Retry
+            </button>
+          </div>
+        )}
+        {loaded && !loadError && open.length === 0 && (
           <div className="empty">
             <div className="symbol">🌅</div>
             <h3>The horizon&apos;s clear for now</h3>

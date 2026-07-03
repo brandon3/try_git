@@ -127,18 +127,29 @@ export default function Dashboard() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [reflecting, setReflecting] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  const [undoing, setUndoing] = useState<number | null>(null);
   const noteRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
-    const [briefRes, statsRes] = await Promise.all([
-      fetch("/api/brief"),
-      fetch("/api/stats"),
-    ]);
-    const brief = await briefRes.json();
-    setRows(brief.rows);
-    setLastBrief(brief.lastBrief);
-    setStats(await statsRes.json());
-    setLoaded(true);
+    // A failed fetch (server restarting, network blip) must degrade to a
+    // visible banner with a retry — not wedge the page in its loading state.
+    try {
+      const [briefRes, statsRes] = await Promise.all([
+        fetch("/api/brief"),
+        fetch("/api/stats"),
+      ]);
+      if (!briefRes.ok || !statsRes.ok) throw new Error("bad status");
+      const brief = await briefRes.json();
+      setRows(brief.rows);
+      setLastBrief(brief.lastBrief);
+      setStats(await statsRes.json());
+      setLoadError(false);
+    } catch {
+      setLoadError(true);
+    } finally {
+      setLoaded(true);
+    }
   }, []);
 
   useEffect(() => {
@@ -178,12 +189,18 @@ export default function Dashboard() {
   }
 
   async function undoAction(id: number) {
-    const res = await fetch(`/api/decisions/${id}/undo`, { method: "POST" });
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
-      alert(data.error ?? "Undo failed");
+    if (undoing !== null) return; // one undo in flight at a time
+    setUndoing(id);
+    try {
+      const res = await fetch(`/api/decisions/${id}/undo`, { method: "POST" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+        alert(data.error ?? "Undo failed");
+      }
+      await load();
+    } finally {
+      setUndoing(null);
     }
-    await load();
   }
 
   async function approveAll(group: Row[]) {
@@ -304,6 +321,14 @@ export default function Dashboard() {
           </a>
         )}
 
+        {loadError && (
+          <div className="banner error">
+            Couldn&apos;t reach Argus — is the server up?{" "}
+            <button className="linkbtn" onClick={() => void load()}>
+              Retry
+            </button>
+          </div>
+        )}
         {lastBrief?.status === "error" && (
           <div className="banner error">
             The last {lastBrief.trigger === "schedule" ? "scheduled" : ""} brief
@@ -462,9 +487,10 @@ export default function Dashboard() {
                             REVERSIBLE.includes(r.decision.action) && (
                               <button
                                 className="linkbtn"
+                                disabled={undoing !== null}
                                 onClick={() => undoAction(r.decision.id)}
                               >
-                                Undo
+                                {undoing === r.decision.id ? "Undoing…" : "Undo"}
                               </button>
                             )}
                         </span>

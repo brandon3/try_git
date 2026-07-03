@@ -45,13 +45,21 @@ export default function History() {
   const [responded, setResponded] = useState<Responded[]>([]);
   const [totals, setTotals] = useState<Totals | null>(null);
 
+  const [loadError, setLoadError] = useState(false);
+
   useEffect(() => {
     void (async () => {
-      const res = await fetch("/api/history");
-      const data = await res.json();
-      setBriefs(data.briefs);
-      setResponded(data.responded);
-      setTotals(data.totals);
+      try {
+        const res = await fetch("/api/history");
+        if (!res.ok) throw new Error("bad status");
+        const data = await res.json();
+        setBriefs(data.briefs);
+        setResponded(data.responded);
+        setTotals(data.totals);
+        setLoadError(false);
+      } catch {
+        setLoadError(true);
+      }
     })();
   }, []);
 
@@ -70,6 +78,11 @@ export default function History() {
 
       <main>
         <h1 className="greeting">The record.</h1>
+        {loadError && (
+          <div className="banner error">
+            Couldn&apos;t reach Argus — is the server up? Reload to retry.
+          </div>
+        )}
         <p className="summary">
           {totals && (
             <>
