@@ -34,7 +34,15 @@ dashboard banners tell you exactly which real pieces aren't wired up yet.
    - OAuth consent screen → publishing status **In production**
      (⚠️ *Testing* status expires refresh tokens every 7 days and will
      silently break Argus weekly; production shows a one-time
-     "unverified app" warning — fine for personal use)
+     "unverified app" warning — click *Advanced → continue* as the owner —
+     and tokens then persist indefinitely)
+   - **No Google verification or CASA security assessment is required.** Those
+     apply to publicly-shared apps; a single-user app falls under Google's
+     personal-use exemption ("fewer than 100 users, all known to you"), even
+     for the restricted `gmail.modify` scope. The one-time unverified-app
+     warning is expected and safe. (Running a Workspace domain? Set the consent
+     screen to *Internal* to skip even that. Details:
+     `research/evolution-and-roadblocks.md`.)
    - OAuth client (Web application) → redirect URI
      `http://<host>:3000/api/auth/callback` (must match `GOOGLE_REDIRECT_URI`
      byte-for-byte)
