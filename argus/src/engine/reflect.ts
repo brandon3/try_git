@@ -4,6 +4,7 @@ import { z } from "zod";
 import { db, schema } from "@/db";
 import { desc, eq, isNotNull } from "drizzle-orm";
 import { runEvals } from "./evals";
+import { singleFlight } from "@/lib/util";
 
 // Loop 2 — nightly reflection: a second pass reviews the user's overrides
 // and rewrites the constitution (the distilled "how this user wants their
@@ -51,7 +52,11 @@ export type ReflectionOutcome = {
   previousScore: number | null;
 };
 
-export async function runReflection(): Promise<ReflectionOutcome> {
+// Coalesced so an overlapping cron run and dashboard tap share one reflection
+// (two concurrent rewrites of the same constitution would race).
+export const runReflection = singleFlight(reflect);
+
+async function reflect(): Promise<ReflectionOutcome> {
   const active = db
     .select()
     .from(schema.constitution)
@@ -153,6 +158,9 @@ async function reflectWithClaude(
   }));
 
   const response = await client.messages.parse({
+    // Deliberately pinned to Opus, not ARGUS_TRIAGE_MODEL: reflection rewrites
+    // the constitution that steers every future triage, so it's the one call
+    // never to economize — even if triage runs on a cheaper tier.
     model: "claude-opus-4-8",
     max_tokens: 16000,
     thinking: { type: "adaptive" },

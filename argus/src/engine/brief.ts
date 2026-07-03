@@ -2,6 +2,7 @@ import { db, schema } from "@/db";
 import { eq } from "drizzle-orm";
 import { syncAll } from "@/connectors";
 import { runTriage } from "./triage";
+import { singleFlight } from "@/lib/util";
 
 // One entry point for a brief run, shared by the API route and the cron
 // scheduler. Every run — including failures — is recorded in `briefs`, so
@@ -16,18 +17,9 @@ export type BriefResult = {
   engine: string;
 };
 
-let inFlight: Promise<BriefResult> | null = null;
-
-export function runBrief(trigger: "manual" | "schedule"): Promise<BriefResult> {
-  // Overlapping runs (cron firing while the button is tapped) coalesce into
-  // the run already in flight.
-  if (!inFlight) {
-    inFlight = execute(trigger).finally(() => {
-      inFlight = null;
-    });
-  }
-  return inFlight;
-}
+// Overlapping runs (cron firing while the button is tapped) coalesce into the
+// run already in flight; the first caller's trigger wins.
+export const runBrief = singleFlight(execute);
 
 async function execute(trigger: "manual" | "schedule"): Promise<BriefResult> {
   const brief = db

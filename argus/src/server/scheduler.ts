@@ -28,54 +28,43 @@ export function startScheduler(): void {
   globalThis.__argusSchedulerStarted = true;
 
   const tz = process.env.ARGUS_TZ; // undefined → node-cron uses system TZ
+
+  // Register one job: run it on schedule, log its outcome, never let a failure
+  // escape (it's already recorded where the dashboard can surface it).
+  const job = (
+    label: string,
+    expr: string,
+    run: () => Promise<string>,
+  ): void => {
+    cron.schedule(
+      expr,
+      async () => {
+        try {
+          console.log(`[argus] ${label}: ${await run()}`);
+        } catch (err) {
+          console.error(`[argus] ${label} failed:`, err);
+        }
+      },
+      tz ? { timezone: tz } : undefined,
+    );
+  };
+
   const briefExpr = process.env.ARGUS_BRIEF_CRON ?? "0 7 * * *";
   const reflectExpr = process.env.ARGUS_REFLECT_CRON ?? "30 3 * * *";
   const horizonExpr = process.env.ARGUS_HORIZON_CRON ?? "0 18 * * 0";
 
-  cron.schedule(
-    briefExpr,
-    async () => {
-      try {
-        const result = await runBrief("schedule");
-        console.log(
-          `[argus] scheduled brief ok: ${result.triaged} triaged, ${result.auto} auto (${result.engine})`,
-        );
-      } catch (err) {
-        // Already recorded in the briefs table (surfaced on the dashboard);
-        // log for journalctl too.
-        console.error("[argus] scheduled brief failed:", err);
-      }
-    },
-    tz ? { timezone: tz } : undefined,
-  );
-
-  cron.schedule(
-    reflectExpr,
-    async () => {
-      try {
-        const outcome = await runReflection();
-        console.log(
-          `[argus] reflection ${outcome.adopted ? `adopted v${outcome.version}` : "not adopted"} (evals ${outcome.evalScore}%)`,
-        );
-      } catch (err) {
-        console.error("[argus] reflection failed:", err);
-      }
-    },
-    tz ? { timezone: tz } : undefined,
-  );
-
-  cron.schedule(
-    horizonExpr,
-    async () => {
-      try {
-        const { created, engine } = await scanHorizons();
-        console.log(`[argus] horizon scan: ${created} new suggestion(s) (${engine})`);
-      } catch (err) {
-        console.error("[argus] horizon scan failed:", err);
-      }
-    },
-    tz ? { timezone: tz } : undefined,
-  );
+  job("scheduled brief", briefExpr, async () => {
+    const r = await runBrief("schedule");
+    return `${r.triaged} triaged, ${r.auto} auto (${r.engine})`;
+  });
+  job("reflection", reflectExpr, async () => {
+    const r = await runReflection();
+    return `${r.adopted ? `adopted v${r.version}` : "not adopted"} (evals ${r.evalScore}%)`;
+  });
+  job("horizon scan", horizonExpr, async () => {
+    const r = await scanHorizons();
+    return `${r.created} new suggestion(s) (${r.engine})`;
+  });
 
   console.log(
     `[argus] scheduler up — brief "${briefExpr}", reflection "${reflectExpr}", horizons "${horizonExpr}"${tz ? ` (${tz})` : " (system tz)"}`,

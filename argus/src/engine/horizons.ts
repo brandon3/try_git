@@ -3,6 +3,8 @@ import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { db, schema } from "@/db";
 import { and, desc, eq, gte, inArray, isNotNull } from "drizzle-orm";
+import { TRIAGE_MODEL } from "./triage";
+import { DAY_MS, singleFlight } from "@/lib/util";
 
 // Horizons — the proactive engine. Reads the shape of the user's life and
 // proposes concrete, evidence-grounded experiences that expand it. Suggestions
@@ -80,7 +82,7 @@ function season(d: Date): string {
 
 export function buildHorizonContext(): Ctx {
   const now = new Date();
-  const thirtyAgo = new Date(now.getTime() - 30 * 864e5);
+  const thirtyAgo = new Date(now.getTime() - 30 * DAY_MS);
 
   // Starved enriching dimensions: which have had little/no recent activity.
   const recent = db
@@ -124,7 +126,7 @@ export function buildHorizonContext(): Ctx {
   );
   const openings: string[] = [];
   for (let i = 1; i <= 30 && openings.length < 4; i++) {
-    const day = new Date(now.getTime() + i * 864e5);
+    const day = new Date(now.getTime() + i * DAY_MS);
     const dow = day.getDay();
     if ((dow === 0 || dow === 6) && !busyDays.has(day.toDateString())) {
       openings.push(
@@ -170,7 +172,7 @@ async function generateWithClaude(ctx: Ctx): Promise<HorizonResult[]> {
   ].filter(Boolean);
 
   const response = await client.messages.parse({
-    model: process.env.ARGUS_TRIAGE_MODEL ?? "claude-opus-4-8",
+    model: TRIAGE_MODEL(),
     max_tokens: 16000,
     thinking: { type: "adaptive" },
     output_config: { effort: "high", format: zodOutputFormat(HorizonBatch) },
@@ -179,7 +181,7 @@ async function generateWithClaude(ctx: Ctx): Promise<HorizonResult[]> {
   });
   const parsed = response.parsed_output;
   if (!parsed) throw new Error("Horizon generation failed schema validation");
-  return parsed.horizons.map((h) => ({ ...h, engine: "claude-opus-4-8" }));
+  return parsed.horizons.map((h) => ({ ...h, engine: TRIAGE_MODEL() }));
 }
 
 // Sandbox generator: composes sensible, evidence-grounded suggestions from the
@@ -229,16 +231,8 @@ function generateWithMock(ctx: Ctx): HorizonResult[] {
   return out.slice(0, TARGET);
 }
 
-let inFlight: Promise<{ created: number; engine: string }> | null = null;
-
-export function scanHorizons(): Promise<{ created: number; engine: string }> {
-  if (!inFlight) {
-    inFlight = doScan().finally(() => {
-      inFlight = null;
-    });
-  }
-  return inFlight;
-}
+// Coalesce overlapping scans (manual button + weekly cron).
+export const scanHorizons = singleFlight(doScan);
 
 async function doScan(): Promise<{ created: number; engine: string }> {
   const open = db
@@ -254,7 +248,7 @@ async function doScan(): Promise<{ created: number; engine: string }> {
 
   // Dedup against anything proposed in the last 60 days (open or answered) so
   // the same idea doesn't resurface.
-  const sixtyAgo = new Date(Date.now() - 60 * 864e5);
+  const sixtyAgo = new Date(Date.now() - 60 * DAY_MS);
   const recentTitles = new Set(
     db
       .select({ title: schema.horizons.title })
@@ -283,7 +277,7 @@ async function doScan(): Promise<{ created: number; engine: string }> {
       .run();
     created++;
   }
-  return { created, engine: useClaude ? "claude-opus-4-8" : "mock" };
+  return { created, engine: useClaude ? TRIAGE_MODEL() : "mock" };
 }
 
 export function respondHorizon(
