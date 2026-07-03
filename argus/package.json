@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "seed": "tsx src/scripts/seed.ts",
+    "doctor": "tsx src/scripts/doctor.ts",
     "test": "vitest run"
   },
   "dependencies": {
