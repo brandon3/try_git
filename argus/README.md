@@ -46,12 +46,18 @@ dashboard banners tell you exactly which real pieces aren't wired up yet.
    - OAuth client (Web application) → redirect URI
      `http://<host>:3000/api/auth/callback` (must match `GOOGLE_REDIRECT_URI`
      byte-for-byte)
-4. **Service**
+4. **Preflight & service** — validate the config, then start it:
    ```sh
+   sudo -u argus bash -c 'set -a; . /var/lib/argus/argus.env; npm run doctor'
    sudo cp deploy/argus.service /etc/systemd/system/
    sudo systemctl daemon-reload && sudo systemctl enable --now argus
    journalctl -u argus -f    # expect: "[argus] scheduler up — brief …"
    ```
+   `npm run doctor` checks Node/ABI, every env var, the redirect-URI shape,
+   the DB path, and the timezone, and prints a GO / NO-GO verdict (exits
+   non-zero on any blocker). After first login, re-run
+   `… npm run doctor -- --live` to verify Anthropic + Google connectivity
+   end-to-end.
 5. **First login** — from a browser on your network (or Tailscale):
    visit `http://<host>:3000/?key=<ARGUS_SECRET>` (sets a cookie), then
    tap **Connect Gmail & Calendar** on the banner and grant access.
@@ -69,6 +75,9 @@ The scheduler runs the brief at **7:00** and reflection at **3:30** in
 
 | Speed bump | What you'll see | Mitigation |
 |---|---|---|
+| A config value is missing/typo'd before first boot | Empty briefs or mock engine at 7am | `npm run doctor` validates every env var, the DB path, and the timezone (and, with `--live`, API reachability) *before* you start the service |
+| Busy inbox/calendar with >1 page in the window | Mail/events silently missing from triage | Both syncs paginate `nextPageToken` through the full window; `external_id` dedupes the overlap |
+| OAuth login-CSRF (crafted callback URL) | Argus bound to a stranger's Google account | A random `state` is set as an httpOnly cookie at initiation and verified in the callback |
 | OAuth consent left in *Testing* | Works for a week, then empty briefs | Docs + code comments insist on **In production**; disconnect shows the "Connect Google" banner |
 | Redirect URI mismatch | Google error page at consent | URI in `.env.example` and README marked must-match-byte-for-byte |
 | Refresh token revoked (password change, security event) | Sync returns nothing | `googleConnected` check → dashboard banner with reconnect link |
