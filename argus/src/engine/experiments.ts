@@ -80,6 +80,27 @@ export function scoreOnResponse(
   }
 }
 
+// An undo of a rule's own auto-execution is the strongest "that was wrong"
+// signal there is — and the only reliable one a promoted rule ever gets, since
+// auto-approvals bypass scoreOnResponse() and its lifetime agreement rate
+// barely moves (a 100/100 rule would need ~25 undos to decay under 80%). Per
+// the trust ladder — autonomy is slow to earn, fast to lose — a single undo
+// demotes the rule straight back to shadow, where it must re-earn its evidence
+// before it can act unattended again. Called from the undo route with the exact
+// rule that fired (decisions.autoRuleId), so only that rule is affected.
+export function demoteRule(ruleId: number): void {
+  const exp = db
+    .select()
+    .from(schema.experiments)
+    .where(eq(schema.experiments.id, ruleId))
+    .get();
+  if (!exp || exp.status !== "promoted") return;
+  db.update(schema.experiments)
+    .set({ status: "shadow", promotedAt: null })
+    .where(eq(schema.experiments.id, ruleId))
+    .run();
+}
+
 // After an approval, check whether a pattern has emerged worth shadowing:
 // the same sender + same action approved CREATE_AFTER_APPROVALS times.
 export function maybeCreateFromHistory(

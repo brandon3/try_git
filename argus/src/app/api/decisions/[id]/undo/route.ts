@@ -3,7 +3,7 @@ import { db, schema } from "@/db";
 import { eq } from "drizzle-orm";
 import { undo } from "@/engine/executor";
 import { captureGolden } from "@/engine/evals";
-import { scoreOnResponse } from "@/engine/experiments";
+import { scoreOnResponse, demoteRule } from "@/engine/experiments";
 
 // POST /api/decisions/:id/undo — take back an executed reversible action.
 // An undo is the strongest "that was wrong" signal there is: it flips the
@@ -50,7 +50,10 @@ export async function POST(
     .get();
   if (item) {
     captureGolden(item, decision, "rejected");
-    scoreOnResponse(item, decision, "rejected"); // may demote the auto-rule
+    scoreOnResponse(item, decision, "rejected"); // records the disagreement
+    // If this action was auto-executed, the undo demotes that rule outright —
+    // the lifetime rate above is too slow to withdraw autonomy on its own.
+    if (decision.autoRuleId) demoteRule(decision.autoRuleId);
     const now = new Date();
     db.insert(schema.preferences)
       .values({

@@ -102,7 +102,14 @@ async function reflect(): Promise<ReflectionOutcome> {
   // The gate: replay the golden set under the candidate. Adopt only if it
   // doesn't regress what the current constitution scores.
   const candidateReport = await runEvals(draft.constitution);
-  const baseline = active?.evalScore ?? null;
+  // Grade the incumbent on the CURRENT golden set — not the score frozen on
+  // its row when it was adopted. The golden set grows with every response, so
+  // the stored evalScore graded a smaller, different exam; comparing the
+  // candidate (scored now) against that stale number would both wave through
+  // genuine regressions and — because an empty golden set scores 100 — freeze
+  // adoption forever once a 100 lands. Re-running evals keeps the gate an
+  // apples-to-apples comparison on today's evidence.
+  const baseline = active ? (await runEvals(active.content)).score : null;
 
   if (baseline !== null && candidateReport.score < baseline) {
     db.insert(schema.constitution)
