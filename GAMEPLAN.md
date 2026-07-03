@@ -71,7 +71,7 @@ Auto-send anything, bank/finance integration, multi-user, mobile app, non-Google
 | **Next.js + TypeScript** | One codebase for UI + API routes; huge ecosystem; easy to deploy anywhere later. |
 | **SQLite + Drizzle** | Single-user personal tool — no reason to run a DB server. One file, trivially backed up. Drizzle for typed queries + migrations. |
 | **`@anthropic-ai/sdk`** | The decision engine. Tool use + structured outputs do the heavy lifting (details in §5). |
-| **Google APIs (`googleapis`)** | OAuth 2.0 with offline refresh token, stored encrypted. Consent screen published to “In production” — testing status expires refresh tokens after 7 days and would break Argus weekly; the one-time unverified-app warning is fine for personal use. |
+| **Google APIs (`googleapis`)** | OAuth 2.0 with offline refresh token, stored as plaintext JSON in the SQLite DB — protected by file permissions (0600, service user) rather than encryption. Consent screen published to “In production” — testing status expires refresh tokens after 7 days and would break Argus weekly; the one-time unverified-app warning is fine for personal use. |
 | **node-cron on the home server** | An always-on Node process at home runs the 7am brief and syncs. Keeps tokens and email data entirely on your own hardware — no cloud host to trust. |
 | **Tailwind + shadcn/ui** | Fast, clean dashboard UI without design overhead. |
 
@@ -210,7 +210,7 @@ in the brief, never an autonomous grant of autonomy.
 | Risk | Mitigation |
 |---|---|
 | AI archives something important | Trust ladder + reversible-only actions + everything logged with one-tap undo. |
-| OAuth token/scopes leak | Tokens encrypted at rest; app runs on your own box; minimal scopes (`gmail.modify`, `calendar.events`). |
+| OAuth token/scopes leak | Tokens are plaintext in the DB, protected by file permissions on your own box (no cloud host); minimal scopes (`gmail.modify`, `calendar.events`). Treat the DB and its backups as secrets. |
 | API costs creep | Caching + batch from day 1; per-day token budget logged on dashboard; hard monthly cap kills cron if exceeded. |
 | Model refuses/errors mid-triage | Fixed action enum + retries; anything unparseable falls back to `needs_you` (fail toward human attention, never toward silence). |
 | You stop trusting it after one bad call | Every action shows its `reason`; rejections immediately update `preferences`; per-category kill switch in settings. |

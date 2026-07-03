@@ -27,8 +27,11 @@ dashboard banners tell you exactly which real pieces aren't wired up yet.
 2. **Configure** — `cp .env.example` values into a root-owned env file:
    ```sh
    sudo install -m 600 -o argus /dev/null /var/lib/argus/argus.env
-   sudoedit /var/lib/argus/argus.env   # ANTHROPIC_API_KEY, GOOGLE_*, ARGUS_SECRET, ARGUS_TZ
+   sudoedit /var/lib/argus/argus.env   # ANTHROPIC_API_KEY, GOOGLE_*, ARGUS_SECRET,
+                                       # ARGUS_TZ, and ARGUS_DB=/var/lib/argus/argus.db
    ```
+   `ARGUS_DB` must be in this file (not only in the systemd unit) so that the
+   preflight below checks the exact database the service will use.
 3. **Google OAuth** (one time) — console.cloud.google.com:
    - New project → enable **Gmail API** + **Calendar API**
    - OAuth consent screen → publishing status **In production**
@@ -65,6 +68,10 @@ dashboard banners tell you exactly which real pieces aren't wired up yet.
    ```
    15 4 * * * node /var/lib/argus/app/argus/deploy/backup.mjs /var/lib/argus/argus.db /var/lib/argus/backups
    ```
+   ⚠️ The database — and therefore every backup — contains your **live Google
+   OAuth tokens in plaintext** (`gmail.modify` + `calendar.events`). Keep
+   backups on the same box or an encrypted destination; don't sync them to a
+   cloud drive as-is.
 7. **Access from your phone** — join the machine to Tailscale and open
    `http://<tailscale-name>:3000`. Don't port-forward Argus to the internet.
 

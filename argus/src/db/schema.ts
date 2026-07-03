@@ -6,7 +6,7 @@ export const sources = sqliteTable("sources", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   kind: text("kind").notNull(), // 'gmail' | 'gcal' | 'fixtures'
   label: text("label").notNull(),
-  credentials: text("credentials"), // encrypted JSON at home; null in sandbox
+  credentials: text("credentials"), // OAuth tokens as plaintext JSON (protected by file perms — see SECURITY.md); null in sandbox
   syncCursor: text("sync_cursor"),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 });

@@ -21,12 +21,14 @@ Restart=on-failure
 RestartSec=5
 
 # Timezone matters: the 7am brief fires in THIS timezone.
+# Keep it identical to ARGUS_TZ in argus.env.
 Environment=TZ=America/Los_Angeles
 Environment=NODE_ENV=production
-Environment=ARGUS_DB=/var/lib/argus/argus.db
-# Secrets live in a root-owned env file, not in this unit:
+# ALL other config — including ARGUS_DB — lives in the env file, so the
+# preflight (`npm run doctor` with that file loaded) checks the exact same
+# database path the service will use. Don't duplicate vars here.
 #   sudo install -m 600 -o argus /dev/null /var/lib/argus/argus.env
-#   (put ANTHROPIC_API_KEY, GOOGLE_*, ARGUS_SECRET, ARGUS_TZ there)
+#   (put ANTHROPIC_API_KEY, GOOGLE_*, ARGUS_SECRET, ARGUS_TZ, ARGUS_DB there)
 EnvironmentFile=/var/lib/argus/argus.env
 
 # Hardening (safe defaults for a home box)

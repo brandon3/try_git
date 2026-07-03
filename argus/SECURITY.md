@@ -53,8 +53,12 @@ architecture disposes.
 
 - Run behind **Tailscale**, never a public port. `ARGUS_SECRET` gates every
   request (Bearer or cookie) as defense-in-depth.
-- Google OAuth tokens live only on your hardware; git operations and MCP calls
-  (if ever added) should route credentials through a proxy, never the model.
+- Google OAuth tokens live only on your hardware — stored as **plaintext JSON**
+  in the SQLite DB, protected by file permissions, not encryption. The DB and
+  every backup of it are secrets: keep them local or on an encrypted
+  destination, never synced as-is to a cloud drive. Git operations and MCP
+  calls (if ever added) should route credentials through a proxy, never the
+  model.
 - Keep auto-rules to genuinely routine, reversible categories. The trust
   ladder is deliberately slow; don't shortcut it.
 
