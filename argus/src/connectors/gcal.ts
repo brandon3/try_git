@@ -18,17 +18,31 @@ export async function sync(): Promise<{ inserted: number }> {
 
   const now = new Date();
   const weekOut = new Date(now.getTime() + 7 * 24 * 3600_000);
-  const events = await g.cal.events.list({
-    calendarId: "primary",
-    timeMin: now.toISOString(),
-    timeMax: weekOut.toISOString(),
-    singleEvents: true,
-    orderBy: "startTime",
-    maxResults: 50,
-  });
+
+  // Page through the whole 7-day window — a full calendar can hold more than
+  // one page of events, and events.list only returns the first page; without
+  // following nextPageToken the later events are silently dropped. MAX_PAGES
+  // bounds a single sync.
+  const events: calendar_v3.Schema$Event[] = [];
+  const MAX_PAGES = 10;
+  let pageToken: string | undefined;
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const res = await g.cal.events.list({
+      calendarId: "primary",
+      timeMin: now.toISOString(),
+      timeMax: weekOut.toISOString(),
+      singleEvents: true,
+      orderBy: "startTime",
+      maxResults: 250,
+      pageToken,
+    });
+    events.push(...(res.data.items ?? []));
+    pageToken = res.data.nextPageToken ?? undefined;
+    if (!pageToken) break;
+  }
 
   let inserted = 0;
-  for (const ev of events.data.items ?? []) {
+  for (const ev of events) {
     const externalId = `gcal:${ev.id}`;
     const exists = db
       .select({ id: schema.items.id })
@@ -82,6 +96,8 @@ export async function respond(
   await g.cal.events.patch({
     calendarId: "primary",
     eventId,
+    // Notify the organizer of the RSVP, as a human accept/decline would.
+    sendUpdates: "all",
     requestBody: { attendees },
   });
   return `${response} calendar event ${eventId}`;

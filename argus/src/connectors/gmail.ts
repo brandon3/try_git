@@ -18,29 +18,58 @@ function header(msg: gmail_v1.Schema$Message, name: string): string | undefined 
   )?.value ?? undefined;
 }
 
+// All values for a repeated header (a message can carry several
+// Authentication-Results headers — forwarding hops, or attacker-embedded ones).
+function headerValues(msg: gmail_v1.Schema$Message, name: string): string[] {
+  return (msg.payload?.headers ?? [])
+    .filter((h) => h.name?.toLowerCase() === name.toLowerCase())
+    .map((h) => h.value ?? "")
+    .filter(Boolean);
+}
+
 // Only DMARC-passing mail is eligible for auto-execution: a From header alone
 // is trivially spoofable, so trust earned by a sender must not transfer to an
-// attacker who forges that sender. Gmail evaluates SPF/DKIM/DMARC and records
-// the result in Authentication-Results.
-function dmarcPass(authResults: string | undefined): boolean {
-  return !!authResults && /dmarc=pass/i.test(authResults);
+// attacker who forges that sender. Gmail evaluates SPF/DKIM/DMARC and stamps
+// the result in an Authentication-Results header whose authserv-id is
+// "mx.google.com". We trust a DMARC pass ONLY from that verifier — a pass in
+// any other Authentication-Results header (added upstream, or forged into the
+// raw message) must not confer auto-execution trust. Unknown authserv-id fails
+// safe to manual review.
+export function dmarcPass(authResults: string[]): boolean {
+  return authResults.some((v) => {
+    const authservId = v.split(";")[0]?.trim().toLowerCase() ?? "";
+    return authservId === "mx.google.com" && /\bdmarc=pass\b/i.test(v);
+  });
 }
 
 export async function sync(): Promise<{ inserted: number }> {
   const g = api();
   if (!g) return { inserted: 0 };
 
-  // Recent, still-in-inbox mail. The 3-day window overlaps between runs;
-  // the external_id unique constraint dedupes.
-  const list = await g.gmail.users.messages.list({
-    userId: "me",
-    q: "in:inbox newer_than:3d",
-    maxResults: 50,
-  });
+  // Page through the whole in-window inbox. A busy account receives far more
+  // than one page of mail in 3 days, and messages.list only returns the newest
+  // page; without following nextPageToken everything past it is never fetched
+  // and — as the window slides forward each run — lost permanently. The 3-day
+  // window overlaps between runs and the external_id unique constraint dedupes.
+  // MAX_PAGES bounds a single sync so a runaway account can't stall it.
+  const refs: gmail_v1.Schema$Message[] = [];
+  const MAX_PAGES = 10;
+  let pageToken: string | undefined;
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const list = await g.gmail.users.messages.list({
+      userId: "me",
+      q: "in:inbox newer_than:3d",
+      maxResults: 100,
+      pageToken,
+    });
+    refs.push(...(list.data.messages ?? []));
+    pageToken = list.data.nextPageToken ?? undefined;
+    if (!pageToken) break;
+  }
 
   // Skip already-imported ids, then fetch the rest in parallel chunks —
   // serial N+1 fetches make a big inbox sync needlessly slow.
-  const fresh = (list.data.messages ?? []).filter((ref) => {
+  const fresh = refs.filter((ref) => {
     const exists = db
       .select({ id: schema.items.id })
       .from(schema.items)
@@ -73,7 +102,7 @@ export async function sync(): Promise<{ inserted: number }> {
           title: header(msg.data, "Subject") ?? "(no subject)",
           from: header(msg.data, "From"),
           bodySnippet: msg.data.snippet ?? undefined,
-          authenticated: dmarcPass(header(msg.data, "Authentication-Results")),
+          authenticated: dmarcPass(headerValues(msg.data, "Authentication-Results")),
           createdAt: new Date(),
         })
         .onConflictDoNothing()
