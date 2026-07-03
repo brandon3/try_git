@@ -85,4 +85,26 @@ describe("horizons — scan lifecycle", () => {
     // Answering an already-answered horizon is rejected.
     expect(respondHorizon(first.id, "dismissed")).toBe(false);
   });
+
+  it("snooze means later, not never — a lapsed snooze re-opens on the next scan", async () => {
+    const target = openHorizons()[0];
+    expect(respondHorizon(target.id, "snoozed")).toBe(true);
+    expect(openHorizons().find((h) => h.id === target.id)).toBeUndefined();
+
+    // Backdate the snooze past the cooldown, as if two weeks have passed.
+    db.update(schema.horizons)
+      .set({ respondedAt: new Date(Date.now() - 15 * 864e5) })
+      .where(eq(schema.horizons.id, target.id))
+      .run();
+
+    await scanHorizons();
+    const reopened = openHorizons().find((h) => h.id === target.id);
+    expect(reopened).toBeDefined();
+    expect(reopened!.status).toBe("open");
+
+    // A FRESH snooze stays resting through a scan.
+    expect(respondHorizon(target.id, "snoozed")).toBe(true);
+    await scanHorizons();
+    expect(openHorizons().find((h) => h.id === target.id)).toBeUndefined();
+  });
 });

@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { db, schema } from "@/db";
-import { and, desc, eq, gte, inArray, isNotNull } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNotNull, lt } from "drizzle-orm";
 import { TRIAGE_MODEL } from "./triage";
 import { DAY_MS, singleFlight } from "@/lib/util";
 
@@ -234,7 +234,24 @@ function generateWithMock(ctx: Ctx): HorizonResult[] {
 // Coalesce overlapping scans (manual button + weekly cron).
 export const scanHorizons = singleFlight(doScan);
 
+// "Later" must actually mean later: how long a snoozed suggestion rests
+// before a scan surfaces it again. Without this, snooze would be a dismiss
+// that doesn't even train taste — the row would sit in 'snoozed' forever.
+const SNOOZE_DAYS = 14;
+
 async function doScan(): Promise<{ created: number; engine: string }> {
+  // Re-open suggestions whose snooze has lapsed, before counting open slots —
+  // resurfaced ideas take priority over generating new ones.
+  db.update(schema.horizons)
+    .set({ status: "open", respondedAt: null })
+    .where(
+      and(
+        eq(schema.horizons.status, "snoozed"),
+        lt(schema.horizons.respondedAt, new Date(Date.now() - SNOOZE_DAYS * DAY_MS)),
+      ),
+    )
+    .run();
+
   const open = db
     .select({ id: schema.horizons.id })
     .from(schema.horizons)

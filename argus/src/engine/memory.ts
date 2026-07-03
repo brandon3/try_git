@@ -30,15 +30,32 @@ function fingerprint(note: string): string {
 }
 
 // Does an active golden case contradict this note? A note that says
-// "'archive' is welcome for X" is contradicted by negative (rejected) golden
-// cases for the archive action, and vice-versa. Deliberately conservative —
-// only counts when the note names an action the golden set disagrees with.
+// "'archive' is welcome for mail from X" is contradicted by negative
+// (rejected) golden cases for the archive action ON THAT SAME TARGET, and
+// vice-versa. The target scoping is load-bearing: a golden case only counts
+// against a note when the case's item (sender or title) is actually named in
+// the note. Without it, any generic "user rejected archive" note would be
+// "contradicted" by every unrelated newsletter the user ever approved
+// archiving — quarantining legitimate memory within the first week of use.
+// Untargeted notes are never quarantined; if wrong, they decay instead.
 function contradictions(note: string): number {
   const cases = db.select().from(schema.goldenCases).all();
+  const noteLower = note.toLowerCase();
   let n = 0;
   for (const c of cases) {
-    const mentions = note.toLowerCase().includes(c.action.toLowerCase());
-    if (!mentions) continue;
+    if (!noteLower.includes(c.action.toLowerCase())) continue;
+    let snap: { from?: string | null; title?: string | null } = {};
+    try {
+      snap = JSON.parse(c.itemJson) as typeof snap;
+    } catch {
+      continue; // no snapshot → no identifiable target → can't contradict
+    }
+    const from = snap.from?.toLowerCase();
+    const title = snap.title?.toLowerCase().slice(0, 40);
+    const sameTarget =
+      (!!from && noteLower.includes(from)) ||
+      (!!title && title.length >= 8 && noteLower.includes(title));
+    if (!sameTarget) continue;
     const noteApproves = /welcome|do "|approve/i.test(note);
     const noteRejects = /do not|don't|reject|undid/i.test(note);
     if (c.kind === "negative" && noteApproves) n++;

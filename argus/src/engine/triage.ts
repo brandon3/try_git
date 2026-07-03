@@ -122,13 +122,21 @@ export async function triageItems(
     ? await triageWithClaude(items, ctx)
     : triageWithMock(items);
 
-  // Never trust IDs from the model: keep only results that map back to a
-  // real input item, and fail unmatched items toward attention.
-  const inputIds = new Set(items.map((i) => i.id));
-  const valid = results.filter((r) => inputIds.has(r.itemId));
-  const returned = new Set(valid.map((r) => r.itemId));
+  // Never trust the shape of a batch response: keep only results that map
+  // back to a real input item, keep exactly ONE per item (a duplicated itemId
+  // in the batch would otherwise become two decision cards — and two side
+  // effects — for one email), coerce actions the item's kind can't execute,
+  // and fail unmatched items toward attention.
+  const byInputId = new Map(items.map((i) => [i.id, i]));
+  const seen = new Map<string, TriageResult>();
+  for (const r of results) {
+    const input = byInputId.get(r.itemId);
+    if (!input || seen.has(r.itemId)) continue;
+    seen.set(r.itemId, coerceForKind(r, input.kind));
+  }
+  const valid = [...seen.values()];
   for (const item of items) {
-    if (!returned.has(item.id)) {
+    if (!seen.has(item.id)) {
       valid.push({
         itemId: item.id,
         verdict: "needs_you",
@@ -141,6 +149,21 @@ export async function triageItems(
     }
   }
   return valid;
+}
+
+// Email actions can't run on calendar events and vice versa — the executor
+// would throw at approval time and the card could never be cleared. Coerce a
+// kind-impossible action to "none" and fail toward attention, so the item
+// still surfaces for the user instead of wedging behind a 502.
+const EMAIL_ONLY_ACTIONS = ["archive", "label", "draft_reply", "flag"];
+const EVENT_ONLY_ACTIONS = ["accept_event", "decline_event"];
+
+function coerceForKind(r: TriageResult, kind: string): TriageResult {
+  const impossible =
+    (kind === "event" && EMAIL_ONLY_ACTIONS.includes(r.action)) ||
+    (kind !== "event" && EVENT_ONLY_ACTIONS.includes(r.action));
+  if (!impossible) return r;
+  return { ...r, verdict: "needs_you", action: "none", actionParams: undefined };
 }
 
 // Configurable so the golden set can benchmark models against each other

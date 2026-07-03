@@ -24,10 +24,14 @@ function seedPref(over: Partial<typeof schema.preferences.$inferInsert>) {
     .get();
 }
 
-function seedGolden(action: string, kind: "positive" | "negative") {
+function seedGolden(
+  action: string,
+  kind: "positive" | "negative",
+  from = "spam@evil.example",
+) {
   db.insert(schema.goldenCases)
     .values({
-      itemJson: "{}",
+      itemJson: JSON.stringify({ kind: "email", title: "Some subject", from, snippet: "" }),
       kind,
       action,
       decisionId: 1,
@@ -76,9 +80,28 @@ describe("memory consolidation", () => {
     seedGolden("archive", "negative");
     seedGolden("archive", "negative");
     seedGolden("archive", "negative");
-    const userSaid = seedPref({ note: 'User said: "archive" is fine here', trust: "user" });
+    const userSaid = seedPref({
+      note: 'User said: "archive" is fine for mail from spam@evil.example',
+      trust: "user",
+    });
     await runConsolidation();
     expect(db.select().from(schema.preferences).where(eq(schema.preferences.id, userSaid.id)).get()!.status).toBe("active");
+  });
+
+  it("does not quarantine a note over golden cases about UNRELATED targets", async () => {
+    // The user approved archiving three different newsletters...
+    seedGolden("archive", "positive", "news-a@letters.example");
+    seedGolden("archive", "positive", "news-b@letters.example");
+    seedGolden("archive", "positive", "news-c@letters.example");
+    // ...and separately rejected an archive on a bank statement, leaving a
+    // generic inferred note. The unrelated positive cases must NOT count as
+    // contradictions — this legitimate memory has to keep steering triage.
+    const legit = seedPref({
+      note: 'User rejected "archive" (routine statement, filed automatically)',
+      trust: "inferred",
+    });
+    await runConsolidation();
+    expect(db.select().from(schema.preferences).where(eq(schema.preferences.id, legit.id)).get()!.status).toBe("active");
   });
 
   it("records a health snapshot each run", async () => {
