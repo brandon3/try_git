@@ -83,6 +83,20 @@ CREATE TABLE IF NOT EXISTS golden_cases (
   decision_id INTEGER NOT NULL,
   created_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS horizons (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  category TEXT NOT NULL,
+  title TEXT NOT NULL,
+  rationale TEXT NOT NULL,
+  first_step TEXT NOT NULL,
+  dimension TEXT NOT NULL,
+  effort TEXT NOT NULL,
+  timing TEXT,
+  status TEXT NOT NULL DEFAULT 'open',
+  engine TEXT NOT NULL,
+  responded_at INTEGER,
+  created_at INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS briefs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   trigger TEXT NOT NULL,

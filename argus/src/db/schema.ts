@@ -106,6 +106,26 @@ export const constitution = sqliteTable("constitution", {
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 });
 
+// Horizons — the proactive, life-expanding half of Argus. Where triage clears
+// what you don't want to attend to, horizons lift your gaze: concrete
+// experiences (hobbies, trips, people to reconnect with) proposed from the
+// actual shape of your life — starved dimensions, engagement signals, and the
+// empty space on your calendar. Suggestions only; Argus never books or spends.
+export const horizons = sqliteTable("horizons", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  category: text("category").notNull(), // 'hobby' | 'travel' | 'people' | 'local' | 'learning'
+  title: text("title").notNull(),
+  rationale: text("rationale").notNull(), // why you, why now — cites the evidence
+  firstStep: text("first_step").notNull(), // one concrete action the user takes
+  dimension: text("dimension").notNull(), // happiness | relationships | health | ...
+  effort: text("effort").notNull(), // 'small' | 'medium' | 'big'
+  timing: text("timing"), // "this Saturday" / "the long weekend of Jul 4"
+  status: text("status").notNull().default("open"), // 'open' | 'saved' | 'dismissed' | 'snoozed'
+  engine: text("engine").notNull(),
+  respondedAt: integer("responded_at", { mode: "timestamp" }),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+});
+
 // Loop 3 — golden set: every user response becomes a labeled test case that
 // gates future changes to the triage prompt/constitution.
 export const goldenCases = sqliteTable("golden_cases", {

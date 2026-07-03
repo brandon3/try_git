@@ -65,6 +65,7 @@ type Stats = {
   responses: number;
   engineMode: "claude" | "mock";
   google: { configured: boolean; connected: boolean };
+  openHorizons: number;
 };
 
 const SECTIONS: { verdict: Row["decision"]["verdict"]; heading: string }[] = [
@@ -250,6 +251,9 @@ export default function Dashboard() {
             <span className="eye">◉</span> Argus
           </div>
           <div className="navactions">
+            <a className="linkbtn" href="/horizons">
+              Horizons
+            </a>
             <a className="linkbtn" href="/history">
               History
             </a>
@@ -284,6 +288,19 @@ export default function Dashboard() {
           <div className="progress" role="progressbar" aria-valuenow={progress}>
             <div className="progressfill" style={{ width: `${progress}%` }} />
           </div>
+        )}
+
+        {stats && stats.openHorizons > 0 && (
+          <a className="horizonteaser" href="/horizons">
+            <span className="sun">🌅</span>
+            <span className="tt">
+              <strong>
+                {stats.openHorizons} thing{stats.openHorizons === 1 ? "" : "s"} worth your time
+              </strong>
+              <span>Argus looked past the inbox — see what&apos;s on the horizon</span>
+            </span>
+            <span className="arrow">→</span>
+          </a>
         )}
 
         {lastBrief?.status === "error" && (

@@ -354,3 +354,103 @@ section h2 {
 }
 
 .navactions { display: flex; align-items: center; gap: 16px; }
+
+/* ── Horizons — the aspirational half ────────────────── */
+
+main.horizons .greeting {
+  background: linear-gradient(105deg, var(--amber), #e9c46a);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.horizon {
+  background: var(--card);
+  border: 1px solid var(--hairline);
+  border-radius: 18px;
+  box-shadow: var(--shadow);
+  padding: 22px 22px 18px;
+  margin: 16px 0;
+}
+
+.hcat {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 12px;
+}
+.hglyph { font-size: 20px; }
+.hcatlabel {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--secondary);
+}
+.hchip {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--handle-tint);
+  color: var(--amber);
+}
+.hchip.subtle { background: var(--pill-gray); color: var(--secondary); }
+
+.htitle {
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  line-height: 1.25;
+  margin: 0 0 8px;
+  color: var(--text);
+  text-transform: none;
+}
+.hrationale {
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--text);
+  margin: 0 0 14px;
+  max-width: 60ch;
+}
+.hstep {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--handle-tint);
+  border-radius: 10px;
+  padding: 11px 14px;
+  margin: 0 0 16px;
+}
+.hsteplabel {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--amber);
+  margin-right: 8px;
+}
+.hactions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+.savedhead { margin-left: 4px; }
+
+/* Teaser card on the main board */
+.horizonteaser {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: linear-gradient(105deg, var(--handle-tint), transparent);
+  border: 1px solid rgba(217, 164, 65, 0.3);
+  border-radius: 14px;
+  padding: 15px 18px;
+  margin: 0 0 6px;
+  text-decoration: none;
+  color: var(--text);
+}
+.horizonteaser:hover { border-color: var(--amber); }
+.horizonteaser .sun { font-size: 22px; }
+.horizonteaser .tt { flex: 1; }
+.horizonteaser .tt strong { display: block; font-weight: 700; letter-spacing: -0.01em; }
+.horizonteaser .tt span { font-size: 13px; color: var(--secondary); }
+.horizonteaser .arrow { color: var(--amber); font-weight: 700; }

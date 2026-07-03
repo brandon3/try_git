@@ -1,6 +1,7 @@
 import cron from "node-cron";
 import { runBrief } from "@/engine/brief";
 import { runReflection } from "@/engine/reflect";
+import { scanHorizons } from "@/engine/horizons";
 
 // The 7am. Started once from instrumentation.ts when the server boots.
 //
@@ -8,6 +9,7 @@ import { runReflection } from "@/engine/reflect";
 //   ARGUS_CRON=0            disable scheduling entirely (dev/sandbox)
 //   ARGUS_BRIEF_CRON        default "0 7 * * *"
 //   ARGUS_REFLECT_CRON      default "30 3 * * *"
+//   ARGUS_HORIZON_CRON      default "0 18 * * 0" (Sunday evening)
 //   ARGUS_TZ                IANA timezone; defaults to the system timezone.
 //                           Set it explicitly under systemd, where the unit
 //                           may not inherit your login shell's TZ.
@@ -28,6 +30,7 @@ export function startScheduler(): void {
   const tz = process.env.ARGUS_TZ; // undefined → node-cron uses system TZ
   const briefExpr = process.env.ARGUS_BRIEF_CRON ?? "0 7 * * *";
   const reflectExpr = process.env.ARGUS_REFLECT_CRON ?? "30 3 * * *";
+  const horizonExpr = process.env.ARGUS_HORIZON_CRON ?? "0 18 * * 0";
 
   cron.schedule(
     briefExpr,
@@ -61,7 +64,20 @@ export function startScheduler(): void {
     tz ? { timezone: tz } : undefined,
   );
 
+  cron.schedule(
+    horizonExpr,
+    async () => {
+      try {
+        const { created, engine } = await scanHorizons();
+        console.log(`[argus] horizon scan: ${created} new suggestion(s) (${engine})`);
+      } catch (err) {
+        console.error("[argus] horizon scan failed:", err);
+      }
+    },
+    tz ? { timezone: tz } : undefined,
+  );
+
   console.log(
-    `[argus] scheduler up — brief "${briefExpr}", reflection "${reflectExpr}"${tz ? ` (${tz})` : " (system tz)"}`,
+    `[argus] scheduler up — brief "${briefExpr}", reflection "${reflectExpr}", horizons "${horizonExpr}"${tz ? ` (${tz})` : " (system tz)"}`,
   );
 }

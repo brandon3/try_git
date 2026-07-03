@@ -77,6 +77,17 @@ The scheduler runs the brief at **7:00** and reflection at **3:30** in
 | Prompt injection via email content | Malicious mail steers triage | Fixed action enum, approval gate, auto-rules limited to reversible actions on *earned* senders |
 | systemd unit can't find the DB | Empty app after reboot | `ARGUS_DB` absolute path in the unit; `WorkingDirectory` set |
 
+## Horizons — the expansive half
+
+Triage clears what you don't want to attend to. **Horizons** does the
+opposite: a weekly scan (`POST /api/horizons`, cron `ARGUS_HORIZON_CRON`,
+default Sunday 6pm) reads which enriching dimensions have gone quiet, what
+you've engaged with, and where your calendar is genuinely open — then proposes
+1–3 concrete experiences (hobbies, trips, people to reconnect with) at
+`/horizons`, each with a *why-you-why-now* rationale and a small first step.
+Set `ARGUS_LOCATION` for travel/local relevance. Save/dismiss trains taste.
+Argus never books or spends — the first step is always yours.
+
 ## Self-improvement loops
 
 Argus learns from every tap, but **nothing self-promotes**:

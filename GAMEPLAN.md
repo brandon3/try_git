@@ -2,7 +2,7 @@
 
 **Gameplan · July 2026**
 
-A personal web app where AI runs the parts of your life you don't want to pay attention to. It ingests your inboxes and calendars, decides what matters, recommends (and eventually takes) actions, and shows you one dashboard: *here's what I handled, here's what needs you.*
+A personal web app where AI runs the parts of your life you don't want to pay attention to — and lifts your gaze to the parts worth reaching for. Two gazes, one watchman: it ingests your inboxes and calendars, decides what matters, and shows you one dashboard (*here's what I handled, here's what needs you*); and it watches the quiet corners of your life to propose experiences that expand it (*here's what would be worth your time*).
 
 **The persona:** Argus Panoptes, the hundred-eyed giant of Greek myth who never fully slept — some eyes always kept watch. That's the product in one image: it watches everything so you don't have to. The persona carries into the UI voice ("Argus has eyes on it", "Nothing needs you today") and the triage system prompt, which frames the model as a vigilant, understated steward — observant, brief, never dramatic.
 
@@ -171,11 +171,23 @@ in the brief, never an autonomous grant of autonomy.
       triage prompt once n≥5 per bucket.
 - **Done when:** ≥50% of routine email is handled without a tap.
 
-### Phase 3 — Proactive mode · ~2 weekends
+### Phase 3 — Proactive mode · partially BUILT
+- [x] **Horizons — the life-expansion engine.** The other half of the thesis:
+      triage clears what you don't want to attend to; Horizons lifts your gaze
+      to what would enrich you. A weekly scan reads the *shape* of your life —
+      which enriching dimensions (happiness/relationships/health) have gone
+      quiet, what you've engaged with, and where your calendar is genuinely
+      empty — and proposes 1–3 concrete, evidence-grounded experiences
+      (hobbies, trips, people to reconnect with, local things, things to learn).
+      Every suggestion cites *why you, why now*; the first step is always
+      something you do; Argus never books or spends. Save/dismiss trains a
+      taste profile for the next scan. Its own warm dashboard page + a teaser
+      on the daily board.
 - [ ] Conflict/deadline detection (double bookings, RSVP deadlines, "you haven't replied to X in 4 days")
 - [ ] Notifications (email-to-self or ntfy.sh push) for "needs you now" items
 - [ ] Midday delta briefs when something important lands
-- **Done when:** it catches a real scheduling conflict before you do.
+- **Done when:** it catches a real scheduling conflict before you do, *and* a
+      Horizons suggestion actually gets you out doing something new.
 
 ### Phase 4 — More of your life (pick based on pain)
 - Subscriptions & bills (parse receipts/renewal emails already in Gmail — no bank API needed)
