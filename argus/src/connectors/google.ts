@@ -35,11 +35,12 @@ export function oauthClient(): OAuth2Client {
   );
 }
 
-export function authUrl(): string {
+export function authUrl(state: string): string {
   return oauthClient().generateAuthUrl({
     access_type: "offline", // refresh token, so the 7am cron never needs a browser
     prompt: "consent",
     scope: SCOPES,
+    state, // CSRF token — the callback verifies it against a cookie
   });
 }
 

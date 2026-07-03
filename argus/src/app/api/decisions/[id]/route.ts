@@ -15,7 +15,9 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  const body = await req.json();
+  // Tolerate an empty/malformed body (e.g. a curl without -d): fall through to
+  // the validation below with a clean 400 rather than an unhandled 500.
+  const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
   const response = body.response as string;
   const note = typeof body.note === "string" ? body.note.trim() : "";
 
