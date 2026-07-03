@@ -4,6 +4,7 @@ import { z } from "zod";
 import { db, schema } from "@/db";
 import { desc, eq, isNotNull } from "drizzle-orm";
 import { runEvals } from "./evals";
+import { runConsolidation } from "./memory";
 import { singleFlight } from "@/lib/util";
 
 // Loop 2 — nightly reflection: a second pass reviews the user's overrides
@@ -57,6 +58,10 @@ export type ReflectionOutcome = {
 export const runReflection = singleFlight(reflect);
 
 async function reflect(): Promise<ReflectionOutcome> {
+  // Consolidate first (loop 5) so we always distill from clean, deduped,
+  // un-poisoned memory rather than a raw pile.
+  await runConsolidation();
+
   const active = db
     .select()
     .from(schema.constitution)
@@ -76,6 +81,7 @@ async function reflect(): Promise<ReflectionOutcome> {
   const notes = db
     .select()
     .from(schema.preferences)
+    .where(eq(schema.preferences.status, "active"))
     .orderBy(desc(schema.preferences.id))
     .limit(50)
     .all();

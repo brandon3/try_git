@@ -66,6 +66,7 @@ type Stats = {
   engineMode: "claude" | "mock";
   google: { configured: boolean; connected: boolean };
   openHorizons: number;
+  memory: { health: number; quarantined: number } | null;
 };
 
 const SECTIONS: { verdict: Row["decision"]["verdict"]; heading: string }[] = [
@@ -531,6 +532,13 @@ export default function Dashboard() {
               )}
               {stats.calibration.high.n >= 5 && (
                 <> · high-confidence accuracy {stats.calibration.high.accuracy}%</>
+              )}
+              {stats.memory && (
+                <>
+                  {" · "}memory health {stats.memory.health}%
+                  {stats.memory.quarantined > 0 &&
+                    ` (${stats.memory.quarantined} quarantined)`}
+                </>
               )}
             </span>
             <button className="linkbtn" onClick={reflect} disabled={reflecting}>

@@ -58,12 +58,32 @@ export const actions = sqliteTable("actions", {
   reversedAt: integer("reversed_at", { mode: "timestamp" }),
 });
 
-// Learned context injected into every triage prompt (the flywheel).
+// Learned context injected into every triage prompt (the flywheel). Each note
+// carries a trust level and a lifecycle status so the consolidation loop can
+// decay, dedup, and quarantine memory — defense against silent poisoning
+// (OWASP ASI06: Memory & Context Poisoning).
 export const preferences = sqliteTable("preferences", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   note: text("note").notNull(),
-  learnedFrom: text("learned_from"), // e.g. 'decision:42'
+  learnedFrom: text("learned_from"), // provenance, e.g. 'decision:42'
+  trust: text("trust").notNull().default("inferred"), // 'user' | 'inferred' | 'untrusted'
+  status: text("status").notNull().default("active"), // 'active' | 'decayed' | 'quarantined'
+  reinforcedAt: integer("reinforced_at", { mode: "timestamp" }).notNull(),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+});
+
+// One row per consolidation run — a visible record of memory health over time,
+// so drift or poisoning shows up as a trend, not a surprise.
+export const memoryAudits = sqliteTable("memory_audits", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  active: integer("active").notNull(),
+  decayed: integer("decayed").notNull(),
+  quarantined: integer("quarantined").notNull(),
+  merged: integer("merged").notNull(),
+  conflicts: integer("conflicts").notNull(),
+  health: integer("health").notNull(), // 0-100
+  note: text("note").notNull(),
+  ranAt: integer("ran_at", { mode: "timestamp" }).notNull(),
 });
 
 // One row per brief run — makes "today" a first-class concept and gives the

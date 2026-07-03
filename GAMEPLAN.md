@@ -169,6 +169,14 @@ in the brief, never an autonomous grant of autonomy.
 - [x] **Calibration**: measured accuracy per confidence bucket (manual responses
       only — auto-approvals can't grade their own homework), fed back into the
       triage prompt once n≥5 per bucket.
+- [x] **Memory consolidation** (loop 5): the automated hygiene pipeline the
+      2026 agent-memory literature says agents lack. Runs nightly and before
+      every reflection — trust-tags each note (`user`/`inferred`/`untrusted`),
+      dedups + reinforces, decays stale low-trust memory, and **quarantines**
+      notes the user's own golden cases contradict (defense against silent
+      memory poisoning, OWASP ASI06). Only *active* memory is injected into any
+      prompt; a recorded health score makes drift visible as a trend. See
+      `argus/research/memory-hardening.md`.
 - **Done when:** ≥50% of routine email is handled without a tap.
 
 ### Phase 3 — Proactive mode · partially BUILT

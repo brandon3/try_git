@@ -55,7 +55,21 @@ CREATE TABLE IF NOT EXISTS preferences (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   note TEXT NOT NULL,
   learned_from TEXT,
+  trust TEXT NOT NULL DEFAULT 'inferred',
+  status TEXT NOT NULL DEFAULT 'active',
+  reinforced_at INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS memory_audits (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  active INTEGER NOT NULL,
+  decayed INTEGER NOT NULL,
+  quarantined INTEGER NOT NULL,
+  merged INTEGER NOT NULL,
+  conflicts INTEGER NOT NULL,
+  health INTEGER NOT NULL,
+  note TEXT NOT NULL,
+  ran_at INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS experiments (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -125,6 +139,13 @@ if (!decisionCols.some((c) => c.name === "brief_id")) {
 const itemCols = sqlite.prepare("PRAGMA table_info(items)").all() as { name: string }[];
 if (!itemCols.some((c) => c.name === "authenticated")) {
   sqlite.exec("ALTER TABLE items ADD COLUMN authenticated INTEGER");
+}
+const prefCols = sqlite.prepare("PRAGMA table_info(preferences)").all() as { name: string }[];
+if (!prefCols.some((c) => c.name === "trust")) {
+  sqlite.exec("ALTER TABLE preferences ADD COLUMN trust TEXT NOT NULL DEFAULT 'inferred'");
+  sqlite.exec("ALTER TABLE preferences ADD COLUMN status TEXT NOT NULL DEFAULT 'active'");
+  sqlite.exec("ALTER TABLE preferences ADD COLUMN reinforced_at INTEGER NOT NULL DEFAULT 0");
+  sqlite.exec("UPDATE preferences SET reinforced_at = created_at WHERE reinforced_at = 0");
 }
 
 export const db = drizzle(sqlite, { schema });

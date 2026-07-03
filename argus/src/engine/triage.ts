@@ -264,9 +264,12 @@ export function buildContext(): TriageContext {
 
   // Raw notes are a holding pen: capped, newest-first, and distilled into
   // the constitution by the reflection loop rather than growing forever.
+  // Trust-aware retrieval: only ACTIVE memory reaches the prompt — decayed and
+  // quarantined notes stay in the store for audit but never steer triage.
   const preferenceNotes = db
     .select()
     .from(schema.preferences)
+    .where(eq(schema.preferences.status, "active"))
     .orderBy(desc(schema.preferences.id))
     .limit(20)
     .all()

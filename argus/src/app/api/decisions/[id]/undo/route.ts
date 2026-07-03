@@ -51,11 +51,15 @@ export async function POST(
   if (item) {
     captureGolden(item, decision, "rejected");
     scoreOnResponse(item, decision, "rejected"); // may demote the auto-rule
+    const now = new Date();
     db.insert(schema.preferences)
       .values({
+        // An explicit undo is the strongest signal there is → high trust.
         note: `User UNDID "${decision.action}"${decision.autoRuleId ? " (auto-executed)" : ""} on "${item.title.slice(0, 60)}" — do not repeat this.`,
         learnedFrom: `decision:${decision.id}`,
-        createdAt: new Date(),
+        trust: "user",
+        reinforcedAt: now,
+        createdAt: now,
       })
       .run();
   }

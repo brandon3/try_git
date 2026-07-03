@@ -92,13 +92,18 @@ export async function POST(
   // Rejections always teach; an explicit note teaches more. Acknowledgements
   // only teach when the user bothered to say why.
   if (response === "rejected" || note) {
+    const now = new Date();
     db.insert(schema.preferences)
       .values({
         note: note
           ? `User said: "${note}" (re: ${decision.verdict}/${decision.action} — ${decision.reason})`
           : `User rejected "${decision.action}" (${decision.reason})`,
         learnedFrom: `decision:${decision.id}`,
-        createdAt: new Date(),
+        // A note the user typed is high-trust ('user'); an auto-summarized
+        // rejection is 'inferred' and will decay if it isn't reinforced.
+        trust: note ? "user" : "inferred",
+        reinforcedAt: now,
+        createdAt: now,
       })
       .run();
   }

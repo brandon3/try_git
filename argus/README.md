@@ -111,6 +111,12 @@ Argus learns from every tap, but **nothing self-promotes**:
   `ARGUS_TRIAGE_MODEL=claude-sonnet-5`, run the evals, compare.
 - **Calibration** — measured accuracy per confidence bucket (manual responses
   only), fed back into the prompt. `GET /api/stats` shows everything.
+- **Consolidation** (`POST /api/memory`, nightly cron `ARGUS_MEMORY_CRON`, and
+  before every reflection) — memory hygiene against silent poisoning: trust-tags
+  every note, dedups + reinforces, decays stale low-trust memory, and
+  quarantines notes the user's golden cases contradict. Only *active* memory
+  reaches the prompt; a recorded health score makes drift visible. See
+  `research/memory-hardening.md`.
 
 ## Layout
 

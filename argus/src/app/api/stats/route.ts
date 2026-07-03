@@ -6,6 +6,7 @@ import { computeCalibration } from "@/engine/calibration";
 import { responseCount } from "@/engine/triage";
 import { googleConfigured, googleConnected } from "@/connectors/google";
 import { openHorizons } from "@/engine/horizons";
+import { latestMemoryAudit } from "@/engine/memory";
 
 // GET /api/stats — the self-improvement dashboard: live rules, pending
 // proposals, calibration, constitution version, golden-set size.
@@ -37,5 +38,6 @@ export async function GET() {
     engineMode: process.env.ANTHROPIC_API_KEY ? "claude" : "mock",
     google: { configured: googleConfigured(), connected: googleConnected() },
     openHorizons: openHorizons().length,
+    memory: latestMemoryAudit() ?? null,
   });
 }
