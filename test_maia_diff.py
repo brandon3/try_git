@@ -185,6 +185,46 @@ class TestLessonKindsAndExport(unittest.TestCase):
         self.assertEqual(board.san(moves[0]), "d4")
 
 
+class TestAnalysisCache(unittest.TestCase):
+    def test_maia_roundtrip_and_policy_none(self):
+        from maia_diff import AnalysisCache
+        c = AnalysisCache()
+        self.assertIsNone(c.maia_get(1500, "fen1"))
+        c.maia_put(1500, "fen1", "e2e4", {"e2e4": 0.5})
+        self.assertEqual(c.maia_get(1500, "fen1")["move"], "e2e4")
+        c.maia_put(1700, "fen1", "d2d4", None)  # no-policy engines store {}
+        self.assertEqual(c.maia_get(1700, "fen1")["policy"], {})
+        self.assertIsNone(c.maia_get(1500, "fen2"))
+
+    def test_sf_entry_accumulates_evals(self):
+        from maia_diff import AnalysisCache
+        c = AnalysisCache()
+        entry = c.sf_entry("d12", "fen1")
+        entry["evals"]["e2e4"] = 30
+        self.assertEqual(c.sf_entry("d12", "fen1")["evals"], {"e2e4": 30})
+        self.assertEqual(c.sf_entry("t0.25", "fen1")["evals"], {})
+
+    def test_save_load_roundtrip_and_corrupt_file(self):
+        import tempfile
+        from pathlib import Path
+        from maia_diff import AnalysisCache
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / "cache.json"
+            c = AnalysisCache(p)
+            c.maia_put(1500, "fen1", "e2e4", {"e2e4": 0.5})
+            c.save()
+            c2 = AnalysisCache(p)
+            self.assertEqual(c2.maia_get(1500, "fen1")["move"], "e2e4")
+            p.write_text("{not json", encoding="utf-8")
+            c3 = AnalysisCache(p)  # corrupt cache: starts fresh, no raise
+            self.assertIsNone(c3.maia_get(1500, "fen1"))
+
+    def test_limit_key(self):
+        from maia_diff import limit_key
+        self.assertEqual(limit_key(chess.engine.Limit(depth=12)), "d12")
+        self.assertEqual(limit_key(chess.engine.Limit(time=0.25)), "t0.25")
+
+
 class TestFetchSecurity(unittest.TestCase):
     def test_rejects_url_injecting_username(self):
         for bad in ("a/../../admin", "user?x=1", "a b", "x" * 65, "",

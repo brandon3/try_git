@@ -35,6 +35,7 @@ import re
 import shutil
 import sys
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -309,19 +310,73 @@ def loss_severity(loss: int) -> str | None:
     return None
 
 
+class AnalysisCache:
+    """Position-keyed cache of engine results (in-memory, optionally
+    persisted to a JSON file).
+
+    Maia results are keyed by (band, fen); Stockfish results by (limit, fen)
+    with candidate evals merged incrementally, so re-runs with different
+    lesson thresholds — or overlapping openings across batch games — skip
+    the engine work entirely.
+    """
+
+    def __init__(self, path: Path | None = None):
+        self.path = path
+        self.data = {"maia": {}, "sf": {}}
+        self.dirty = False
+        self.hits = self.misses = 0
+        if path and Path(path).is_file():
+            try:
+                loaded = json.loads(Path(path).read_text(encoding="utf-8"))
+                if isinstance(loaded, dict) and "maia" in loaded and "sf" in loaded:
+                    self.data = loaded
+            except (OSError, ValueError):
+                pass  # corrupt/unreadable cache: start fresh
+
+    def maia_get(self, band: int, fen: str):
+        entry = self.data["maia"].get(f"{band}:{fen}")
+        self.hits += entry is not None
+        self.misses += entry is None
+        return entry
+
+    def maia_put(self, band: int, fen: str, move_uci: str, policy: dict | None):
+        self.data["maia"][f"{band}:{fen}"] = {"move": move_uci,
+                                              "policy": policy or {}}
+        self.dirty = True
+
+    def sf_entry(self, limit_key: str, fen: str) -> dict:
+        return self.data["sf"].setdefault(f"{limit_key}:{fen}",
+                                          {"evals": {}})
+
+    def mark_dirty(self):
+        self.dirty = True
+
+    def save(self):
+        if not (self.path and self.dirty):
+            return
+        tmp = Path(str(self.path) + ".tmp")
+        tmp.write_text(json.dumps(self.data), encoding="utf-8")
+        tmp.replace(self.path)
+
+
 class EnginePool:
     """Owns the engine processes; spawns each at most once per run.
 
     Batch runs reuse Maia engines across games with the same band and share
-    a single Stockfish process, instead of paying startup per game.
+    a single Stockfish process, instead of paying startup per game. Also
+    owns the thread pool used to overlap Maia and Stockfish queries.
     """
 
-    def __init__(self, lc0_path: str, sf_path: str, weights_dir: Path):
+    def __init__(self, lc0_path: str, sf_path: str, weights_dir: Path,
+                 sf_threads: int = 1):
         self.lc0_path = lc0_path
         self.sf_path = sf_path
         self.weights_dir = weights_dir
+        self.sf_threads = sf_threads
         self._maia: dict = {}
         self._sf = None
+        self.executor = ThreadPoolExecutor(max_workers=2,
+                                           thread_name_prefix="maia")
 
     def maia(self, band: int) -> MaiaEngine:
         if band not in self._maia:
@@ -333,9 +388,14 @@ class EnginePool:
     def sf(self) -> chess.engine.SimpleEngine:
         if self._sf is None:
             self._sf = chess.engine.SimpleEngine.popen_uci(self.sf_path)
+            try:
+                self._sf.configure({"Threads": self.sf_threads, "Hash": 128})
+            except chess.engine.EngineError:
+                pass  # engine without these options: run with its defaults
         return self._sf
 
     def close(self):
+        self.executor.shutdown(wait=False)
         for engine in self._maia.values():
             engine.quit()
         if self._sf is not None:
@@ -345,49 +405,88 @@ class EnginePool:
                 pass
 
 
+def limit_key(limit: chess.engine.Limit) -> str:
+    return f"d{limit.depth}" if limit.depth else f"t{limit.time}"
+
+
 class Analyzer:
     def __init__(self, pool: EnginePool, band_cur, band_tgt,
-                 sf_limit, endorse_cp, gain_cp, human_prob):
+                 sf_limit, endorse_cp, gain_cp, human_prob,
+                 cache: AnalysisCache | None = None):
         self.sf_limit = sf_limit
+        self.limit_key = limit_key(sf_limit)
         self.endorse_cp = endorse_cp
         self.gain_cp = gain_cp
         self.human_prob = human_prob
         self.band_cur = band_cur
         self.band_tgt = band_tgt
+        self.executor = pool.executor
         self.maia_cur = pool.maia(band_cur)
         self.maia_tgt = pool.maia(band_tgt)
         self.sf = pool.sf
+        self.cache = cache or AnalysisCache()
 
-    def eval_moves(self, board: chess.Board, moves: list, pov: chess.Color) -> dict:
+    def _maia_query(self, engine: MaiaEngine, band: int,
+                    board: chess.Board, fen: str):
+        cached = self.cache.maia_get(band, fen)
+        if cached is not None:
+            return board.parse_uci(cached["move"]), (cached["policy"] or None)
+        move, policy = engine.query(board)
+        self.cache.maia_put(band, fen, move.uci(), policy)
+        return move, policy
+
+    def _sf_best(self, board: chess.Board, fen: str, pov: chess.Color):
+        entry = self.cache.sf_entry(self.limit_key, fen)
+        if "best" in entry:
+            return board.parse_uci(entry["best"]), entry["best_cp"], entry
+        info = self.sf.analyse(board, self.sf_limit)
+        move, cp = info["pv"][0], score_cp(info["score"], pov)
+        entry.update(best=move.uci(), best_cp=cp)
+        entry["evals"][move.uci()] = cp
+        self.cache.mark_dirty()
+        return move, cp, entry
+
+    def eval_moves(self, board: chess.Board, moves: list, pov: chess.Color,
+                   entry: dict) -> dict:
         """Evals (cp, from pov) of forcing each move at the root — one
-        multipv search for all of them instead of a search per move."""
-        if not moves:
-            return {}
+        multipv search for the moves the cache doesn't already know."""
+        evals = {board.parse_uci(u): cp for u, cp in entry["evals"].items()}
+        missing = [m for m in moves if m not in evals]
+        if not missing:
+            return evals
         infos = self.sf.analyse(board, self.sf_limit,
-                                root_moves=moves, multipv=len(moves))
-        evals = {info["pv"][0]: score_cp(info["score"], pov)
-                 for info in infos if "pv" in info and "score" in info}
-        for move in moves:  # engine dropped a line (rare): search it alone
+                                root_moves=missing, multipv=len(missing))
+        for info in infos:
+            if "pv" in info and "score" in info:
+                evals[info["pv"][0]] = score_cp(info["score"], pov)
+        for move in missing:  # engine dropped a line (rare): search it alone
             if move not in evals:
                 info = self.sf.analyse(board, self.sf_limit, root_moves=[move])
                 evals[move] = score_cp(info["score"], pov)
+        entry["evals"].update({m.uci(): cp for m, cp in evals.items()})
+        self.cache.mark_dirty()
         return evals
 
     def analyze_position(self, board: chess.Board, played: chess.Move) -> MoveRow:
         pov = board.turn
         san = board.san
+        fen = board.fen()
 
-        m_cur, pol_cur = self.maia_cur.query(board)
-        m_tgt, pol_tgt = self.maia_tgt.query(board)
-
-        best_info = self.sf.analyse(board, self.sf_limit)
-        sf_move = best_info["pv"][0]
-        best_cp = score_cp(best_info["score"], pov)
+        # The two Maia processes run on worker threads while this thread
+        # runs the Stockfish best-move search — three engines in parallel.
+        fut_cur = self.executor.submit(
+            self._maia_query, self.maia_cur, self.band_cur, board, fen)
+        fut_tgt = self.executor.submit(
+            self._maia_query, self.maia_tgt, self.band_tgt, board, fen)
+        sf_move, best_cp, entry = self._sf_best(board, fen, pov)
+        m_cur, pol_cur = fut_cur.result()
+        m_tgt, pol_tgt = fut_tgt.result()
 
         # Eval the distinct non-SF candidates in one multipv search.
-        evals = {sf_move: best_cp}
-        evals.update(self.eval_moves(
-            board, [m for m in {played, m_cur, m_tgt} if m != sf_move], pov))
+        evals = self.eval_moves(
+            board, [m for m in {played, m_cur, m_tgt} if m != sf_move],
+            pov, entry)
+        evals[sf_move] = best_cp
 
         def prob(policy, move):
             return policy.get(move.uci()) if policy else None
@@ -709,6 +808,14 @@ def main():
     ap.add_argument("--sf-depth", type=int,
                     help="use a fixed stockfish depth instead of movetime "
                          "(reproducible: identical runs give identical output)")
+    ap.add_argument("--sf-threads", type=int, default=1,
+                    help="stockfish Threads option (default 1; raising it "
+                         "speeds up --sf-depth runs but makes them "
+                         "nondeterministic)")
+    ap.add_argument("--cache", type=Path, metavar="FILE",
+                    help="persist engine results to FILE (JSON); re-running "
+                         "the same games (e.g. with different lesson "
+                         "thresholds) becomes near-instant")
     ap.add_argument("--endorse-cp", type=int, default=50,
                     help="max cp loss for SF to 'endorse' the Maia-target move")
     ap.add_argument("--gain-cp", type=int, default=50,
@@ -740,7 +847,9 @@ def main():
     sf_path = find_binary(args.stockfish, "STOCKFISH_PATH", ["stockfish"], "stockfish")
 
     reports = []
-    pool = EnginePool(lc0_path, sf_path, args.weights_dir)
+    cache = AnalysisCache(args.cache)
+    pool = EnginePool(lc0_path, sf_path, args.weights_dir,
+                      sf_threads=args.sf_threads)
     try:
         for game in games:
             headers = dict(game.headers)
@@ -755,13 +864,17 @@ def main():
             sf_limit = (chess.engine.Limit(depth=args.sf_depth) if args.sf_depth
                         else chess.engine.Limit(time=args.sf_movetime))
             an = Analyzer(pool, band_cur, band_tgt, sf_limit,
-                          args.endorse_cp, args.gain_cp, args.human_prob)
+                          args.endorse_cp, args.gain_cp, args.human_prob,
+                          cache=cache)
             report = an.analyze_game(game, args.player, args.both_sides,
                                      on_row=lambda r: print(format_row(r), flush=True))
             reports.append(report)
             print_summary(report)
     finally:
         pool.close()
+        cache.save()
+    if args.cache and cache.hits:
+        print(f"\ncache: {cache.hits} hits, {cache.misses} misses ({args.cache})")
 
     if len(reports) > 1:
         total = sum(len(r.rows) for r in reports)

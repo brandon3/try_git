@@ -160,10 +160,19 @@ legality. No engines needed.
 
 ## Notes / limitations
 
-- Two Stockfish searches per position (best move, then one multipv search
-  covering all non-best candidates) plus two lc0 policy queries; engines are
-  spawned once per run and reused across batch games. A full game analyzes
-  in ~10 s on a laptop CPU.
+- Per position: the two lc0 policy queries run on worker threads *while*
+  Stockfish searches for the best move (three engine processes in
+  parallel), then one multipv search covers the remaining candidates.
+  Engines are spawned once per run and reused across batch games. A full
+  game analyzes in a few seconds on a laptop CPU.
+- `--cache analysis.json` persists all engine results keyed by position:
+  re-running the same games — e.g. to tune `--gain-cp`/`--endorse-cp` — is
+  near-instant (~15× faster), and identical opening positions across batch
+  games are only analyzed once. Delete the file to re-analyze from scratch;
+  entries are keyed by search limit, so changing `--sf-depth`/`--sf-movetime`
+  automatically bypasses stale results.
+- `--sf-threads N` speeds up fixed-depth (`--sf-depth`) runs at the cost of
+  reproducibility; it has no wall-clock effect on time-based runs.
 - `--fetch` uses `https://api.chess.com/pub/player/<user>/games/{archives}`.
   It could not be live-tested from the development container (network policy
   blocks api.chess.com) but follows the documented public API; if it
