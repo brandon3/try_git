@@ -30,9 +30,22 @@ py -m venv .venv
 
 Engines — the script never guesses paths; give it one of these:
 
-- **lc0**: download a CPU build (e.g. `lc0-...-windows-cpu-dnnl.zip`) from
-  https://github.com/LeelaChessZero/lc0/releases, then either drop `lc0.exe`
-  into `engines\`, set `LC0_PATH`, or pass `--lc0 C:\path\to\lc0.exe`.
+- **lc0**: a Windows CPU build is committed at `dist\windows\lc0.exe`
+  (lc0 v0.31.2, x86-64, Eigen backend, cross-compiled with MinGW, statically
+  linked — no DLLs needed; requires a CPU with POPCNT+F16C, i.e. anything
+  from ~2013 on). Copy it to `engines\lc0.exe` and you're done:
+
+  ```bat
+  copy dist\windows\lc0.exe engines\lc0.exe
+  ```
+
+  It carries two small source patches vs upstream v0.31.2: system-zlib
+  linking instead of the vendored subproject, and
+  `GetModuleFileNameA` instead of `_get_pgmptr` (not exported by MinGW's
+  msvcrt). Neither affects search or the network evaluation. If you prefer
+  an official build (or want a faster dnnl/onednn backend), download
+  `lc0-...-windows-cpu-...zip` from
+  https://github.com/LeelaChessZero/lc0/releases and use that instead.
 - **Stockfish**: download from https://stockfishchess.org/download/, then drop
   `stockfish.exe` into `engines\`, set `STOCKFISH_PATH`, or pass `--stockfish`.
 
