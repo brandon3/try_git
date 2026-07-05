@@ -232,6 +232,14 @@ class MoveRow:
     def matched_sf(self) -> bool:
         return self.played_san == self.sf_san
 
+    @property
+    def lesson_kind(self) -> str | None:
+        """'missed' = you didn't play the target move (study this);
+        'aced' = you already played it (your band typically doesn't)."""
+        if not self.lesson:
+            return None
+        return "aced" if self.matched_tgt else "missed"
+
     def tags(self) -> list:
         """Semantic flag tokens; renderers only style them."""
         out = []
@@ -283,11 +291,14 @@ def summarize(report: GameReport) -> Stats:
         engine_only=sum(r.engine_only for r in rows),
         avg_loss=sum(r.played_loss for r in rows) / n if n else 0.0,
         humanness=sum(probs) / len(probs) if probs else None,
-        lessons=[r for r in rows if r.lesson],
+        # Missed lessons first (real study material), biggest mistakes first.
+        lessons=sorted((r for r in rows if r.lesson),
+                       key=lambda r: (r.lesson_kind != "missed", -r.played_loss)),
     )
 
 
-LOSS_WARN, LOSS_BAD = 50, 100  # centipawn-loss severity thresholds
+LOSS_WARN, LOSS_BAD = 50, 100   # centipawn-loss severity thresholds
+LOSS_MATE = MATE_CP - 1000      # losses this large mean a forced mate is involved
 
 
 def loss_severity(loss: int) -> str | None:
@@ -485,7 +496,8 @@ def fmt_prob(p: float | None) -> str:
 
 
 def fmt_loss(loss: int, width: int = 9) -> str:
-    text = f"{loss:>{width}}"
+    # cp deltas against a forced mate aren't meaningful numbers — say "mate"
+    text = f"{'mate' if loss >= LOSS_MATE else loss:>{width}}"
     color = {"bad": RED, "warn": YELLOW}.get(loss_severity(loss))
     return Style.paint(text, color) if color else text
 
@@ -537,7 +549,9 @@ def print_summary(report: GameReport):
                 f"consider it" if r.tgt_prob_cur is not None else "")
         finds = (f" ({fmt_prob(r.tgt_prob_tgt)} policy)"
                  if r.tgt_prob_tgt is not None else "")
-        print(f"    {r.move_number:>7} you played {r.played_san} "
+        kind = (Style.paint("MISSED", BOLD, RED) if r.lesson_kind == "missed"
+                else Style.paint("aced", GREEN))
+        print(f"    {r.move_number:>7} [{kind}] you played {r.played_san} "
               f"(loss {r.played_loss}cp); a {report.band_tgt}-rated player "
               f"finds {Style.paint(r.maia_tgt_san, BOLD, GREEN)}{finds} "
               f"(loss {r.tgt_loss}cp), "
@@ -589,6 +603,31 @@ def fetch_games(username: str, count: int) -> list:
             if parsed:
                 out.append(parsed)
     return out
+
+
+def write_lessons_pgn(reports: list, path: Path) -> int:
+    """Export every lesson position as a FEN-start PGN chapter (importable
+    into a lichess study or drilling tool). Returns the lesson count."""
+    chapters = []
+    for report in reports:
+        h = report.headers
+        for r in summarize(report).lessons:
+            board = chess.Board(r.fen)
+            game = chess.pgn.Game()
+            game.setup(board)
+            game.headers["Event"] = (
+                f"Lesson ({r.lesson_kind}): move {r.move_number} of "
+                f"{h.get('White', '?')} vs {h.get('Black', '?')} {h.get('Date', '')}")
+            game.headers["Result"] = "*"
+            node = game.add_variation(board.parse_san(r.maia_tgt_san))
+            node.comment = (
+                f"Target ({report.band_tgt}-level) move. You played "
+                f"{r.played_san} (loss {r.played_loss}cp); "
+                f"{report.band_cur} typically plays {r.maia_cur_san} "
+                f"(loss {r.cur_loss}cp).")
+            chapters.append(str(game))
+    Path(path).write_text("\n\n".join(chapters) + "\n", encoding="utf-8")
+    return len(chapters)
 
 
 def load_pgn_games(path: Path) -> list:
@@ -680,6 +719,9 @@ def main():
     ap.add_argument("--html", type=Path, metavar="FILE",
                     help="also write a self-contained HTML report with board "
                          "diagrams for each lesson")
+    ap.add_argument("--lessons-pgn", type=Path, metavar="FILE",
+                    help="also export lesson positions as a FEN-start PGN "
+                         "(one chapter per lesson, e.g. for a lichess study)")
     args = ap.parse_args()
     Style.init()
 
@@ -730,6 +772,10 @@ def main():
         from html_report import write_report
         write_report(reports, args.html)
         print(f"\nHTML report written to {args.html}")
+
+    if args.lessons_pgn:
+        count = write_lessons_pgn(reports, args.lessons_pgn)
+        print(f"{count} lesson position(s) exported to {args.lessons_pgn}")
 
 
 if __name__ == "__main__":

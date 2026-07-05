@@ -141,6 +141,50 @@ class TestRowTagsAndStats(unittest.TestCase):
         self.assertEqual(s.humanness, 0.5)  # None prob excluded
 
 
+class TestLessonKindsAndExport(unittest.TestCase):
+    def test_lesson_kind(self):
+        self.assertIsNone(make_row().lesson_kind)
+        self.assertEqual(make_row(lesson=True).lesson_kind, "aced")
+        self.assertEqual(
+            make_row(lesson=True, maia_tgt_san="d4", tgt_uci="d2d4").lesson_kind,
+            "missed")
+
+    def test_lessons_sorted_missed_first_biggest_loss_first(self):
+        aced = make_row(lesson=True)
+        small = make_row(lesson=True, maia_tgt_san="d4", tgt_uci="d2d4",
+                         played_loss=60)
+        big = make_row(lesson=True, maia_tgt_san="c4", tgt_uci="c2c4",
+                       played_loss=300)
+        rep = GameReport(headers={}, player_color=chess.WHITE, band_cur=1500,
+                         band_tgt=1700, rows=[aced, small, big])
+        self.assertEqual(summarize(rep).lessons, [big, small, aced])
+
+    def test_fmt_loss_mate_label(self):
+        from maia_diff import LOSS_MATE, fmt_loss
+        self.assertIn("mate", fmt_loss(LOSS_MATE))
+        self.assertNotIn("mate", fmt_loss(LOSS_MATE - 1))
+
+    def test_write_lessons_pgn_roundtrip(self):
+        import io as io_
+        import tempfile
+        from pathlib import Path
+        from maia_diff import write_lessons_pgn
+
+        row = make_row(lesson=True, maia_tgt_san="d4", tgt_uci="d2d4")
+        rep = GameReport(headers={"White": "a", "Black": "b"},
+                         player_color=chess.WHITE, band_cur=1500,
+                         band_tgt=1700, rows=[row])
+        with tempfile.TemporaryDirectory() as d:
+            out = Path(d) / "lessons.pgn"
+            self.assertEqual(write_lessons_pgn([rep], out), 1)
+            game = chess.pgn.read_game(io_.StringIO(out.read_text()))
+        board = game.board()
+        self.assertEqual(board.fen(), chess.STARTING_FEN)
+        moves = list(game.mainline_moves())
+        self.assertEqual(len(moves), 1)
+        self.assertEqual(board.san(moves[0]), "d4")
+
+
 class TestFetchSecurity(unittest.TestCase):
     def test_rejects_url_injecting_username(self):
         for bad in ("a/../../admin", "user?x=1", "a b", "x" * 65, "",

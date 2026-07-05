@@ -11,7 +11,7 @@ from pathlib import Path
 import chess
 import chess.svg
 
-from maia_diff import fmt_prob, loss_severity, summarize
+from maia_diff import LOSS_MATE, fmt_prob, loss_severity, summarize
 
 ARROW_TGT = "#15803dcc"     # green  — Maia-target move
 ARROW_PLAYED = "#b91c1ccc"  # red    — your move (when it differs)
@@ -66,6 +66,10 @@ tr.lesson-row td:first-child { box-shadow: inset 3px 0 var(--green); }
 .legend span { white-space: nowrap; }
 .k { display: inline-block; width: .7em; height: .7em; border-radius: 2px;
   margin-right: .25em; }
+details.answer { margin-top: .6rem; }
+details.answer summary { cursor: pointer; font-weight: 600;
+  color: var(--green); }
+details.answer svg { margin-top: .6rem; }
 footer { margin-top: 3rem; color: var(--dim); font-size: .85rem; }
 """
 
@@ -94,7 +98,14 @@ def _board_svg(row, orientation: chess.Color, spec: list) -> str:
 def _loss_cell(loss: int) -> str:
     cls = {"bad": "hot", "warn": "warm"}.get(
         loss_severity(loss), "dim" if loss == 0 else "")
-    return f'<td class="num {cls}">{loss}</td>'
+    text = "mate" if loss >= LOSS_MATE else loss
+    return f'<td class="num {cls}">{text}</td>'
+
+
+def _cp(loss: int) -> str:
+    if loss >= LOSS_MATE:
+        return "a forced mate"
+    return f"−{loss}cp" if loss else "0cp"
 
 
 BADGE_CLASS = {"lesson": "lesson", "engine-only": "engine", "=tgt": "match",
@@ -137,19 +148,40 @@ def _lesson_cards(report) -> str:
         pol = (f" ({fmt_prob(r.tgt_prob_tgt)} policy)"
                if r.tgt_prob_tgt is not None else "")
         spec = _arrow_spec(r)
-        legend = [f'<span><span class="k" style="background:{color[:7]}">'
-                  f'</span>{label}</span>' for _, color, label in spec]
-        cards.append(f"""
+        legend = "".join(
+            f'<span><span class="k" style="background:{color[:7]}">'
+            f'</span>{label}</span>' for _, color, label in spec)
+        answer = (
+            f"<p>A {report.band_tgt}-level player finds "
+            f"<b>{escape(r.maia_tgt_san)}</b>{pol} ({_cp(r.tgt_loss)}), while "
+            f"{report.band_cur} typically plays {escape(r.maia_cur_san)} "
+            f"({_cp(r.cur_loss)}).{consider}</p>")
+        if r.lesson_kind == "missed":
+            # Quiz form: question board shows only your move; the answer
+            # (and its arrows) stays behind a click.
+            question = [(r.played_uci, ARROW_PLAYED, "your move")]
+            cards.append(f"""
 <div class="card">
-  <h3>Move {escape(r.move_number.rstrip('.'))} — study
+  <h3>Move {escape(r.move_number.rstrip('.'))} — find the improvement</h3>
+  {_board_svg(r, report.player_color, question)}
+  <p>You played <b>{escape(r.played_san)}</b> ({_cp(r.played_loss)}).
+     What's better here?</p>
+  <details class="answer"><summary>Show answer</summary>
+    {_board_svg(r, report.player_color, spec)}
+    {answer}
+    <p class="legend">{legend}</p>
+  </details>
+</div>""")
+        else:
+            cards.append(f"""
+<div class="card">
+  <h3>Move {escape(r.move_number.rstrip('.'))} — you found
       <span style="color:var(--green)">{escape(r.maia_tgt_san)}</span></h3>
   {_board_svg(r, report.player_color, spec)}
-  <p>You played <b>{escape(r.played_san)}</b> (−{r.played_loss}cp).
-     A {report.band_tgt}-level player finds
-     <b>{escape(r.maia_tgt_san)}</b>{pol} (−{r.tgt_loss}cp), while
-     {report.band_cur} typically plays {escape(r.maia_cur_san)}
-     (−{r.cur_loss}cp).{consider}</p>
-  <p class="legend">{''.join(legend)}</p>
+  <p>You played <b>{escape(r.played_san)}</b> ({_cp(r.played_loss)}) —
+     a move your band usually misses.</p>
+  {answer}
+  <p class="legend">{legend}</p>
 </div>""")
     return f'<div class="cards">{"".join(cards)}</div>'
 

@@ -104,6 +104,20 @@ network, no scripts — with lesson cards (SVG boards, arrows for the
 target/played/Maia-current moves) and the full move table per game; it
 follows your OS light/dark theme.
 
+Lessons come in two kinds, missed-first, biggest mistake first:
+
+- **missed** — you didn't play the target move. In the HTML report these
+  are quiz cards: the board shows only your move, and the answer (with its
+  arrows and explanation) sits behind a "Show answer" click.
+- **aced** — you played the target move even though your band usually
+  doesn't. Shown openly, as positive reinforcement.
+
+`--lessons-pgn drills.pgn` additionally exports every lesson position as a
+FEN-start PGN chapter (target move as the main line, explanation as a
+comment) — import it into a lichess study or any drilling tool for spaced
+repetition. Losses that involve forced mates display as `mate` instead of
+meaningless huge centipawn numbers.
+
 Your rating is read from the PGN `WhiteElo`/`BlackElo` header for your side
 and rounded to the nearest Maia band; the target band is +200 (capped at
 1900). Override with `--rating`, `--target-delta`. Other knobs:
