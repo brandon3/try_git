@@ -829,6 +829,9 @@ def main():
     ap.add_argument("--lessons-pgn", type=Path, metavar="FILE",
                     help="also export lesson positions as a FEN-start PGN "
                          "(one chapter per lesson, e.g. for a lichess study)")
+    ap.add_argument("--deck", type=Path, metavar="FILE",
+                    help="add missed lessons to a spaced-repetition deck "
+                         "(drill it with: python trainer.py drill --deck FILE)")
     args = ap.parse_args()
     Style.init()
 
@@ -889,6 +892,28 @@ def main():
     if args.lessons_pgn:
         count = write_lessons_pgn(reports, args.lessons_pgn)
         print(f"{count} lesson position(s) exported to {args.lessons_pgn}")
+
+    if args.deck:
+        import trainer
+        deck = trainer.load_deck(args.deck)
+        added = 0
+        for report in reports:
+            h = report.headers
+            source = (f"{h.get('White', '?')} vs {h.get('Black', '?')} "
+                      f"{h.get('Date', '')}")
+            for r in summarize(report).lessons:
+                if r.lesson_kind != "missed":
+                    continue
+                added += trainer.add_card(
+                    deck, fen=r.fen, target_uci=r.tgt_uci,
+                    target_san=r.maia_tgt_san, played_san=r.played_san,
+                    cur_san=r.maia_cur_san, band_cur=report.band_cur,
+                    band_tgt=report.band_tgt, source=clean(source))
+        trainer.save_deck(deck, args.deck)
+        due = len(trainer.due_cards(deck))
+        print(f"{added} new drill card(s) added to {args.deck} "
+              f"({len(deck['cards'])} total, {due} due — "
+              f"run: python trainer.py drill --deck {args.deck})")
 
 
 if __name__ == "__main__":
