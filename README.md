@@ -11,15 +11,21 @@ reports:
 | SF top | Stockfish's best move (ground truth) |
 | loss(...) | centipawn loss of each move vs Stockfish's best |
 
+The **you%** column is Maia-current's policy probability for the move you
+played — how typical your choice was for your rating band.
+
 **LESSON flag** (the training signal): Maia-target diverges from Maia-current,
 Stockfish endorses the target move (within `--endorse-cp` of best, default 50),
 and it is meaningfully better than the current-band move (`--gain-cp`, default
-50). **engine-only flag**: Stockfish's top move is one *neither* Maia band
-would play — filtered out of the lesson surface, because engine-only lines are
-not human-plausible improvement at club level.
+50). **engine-only flag**: Maia's policy gives Stockfish's top move less than
+`--human-prob` (default 10%) at *both* bands — humans at your level and the
+target level rarely even consider it, so it is filtered out of the lesson
+surface. (If lc0 ever fails to report policy stats, this falls back to a
+coarser test: SF's move differs from both Maia moves.)
 
 Maia moves are queried at `nodes=1` (raw policy argmax), which is the Maia
-paper's "predict the human move" setting.
+paper's "predict the human move" setting; the policy distribution comes from
+lc0's `VerboseMoveStats` output.
 
 ## Setup (Windows)
 
@@ -46,8 +52,25 @@ Engines — the script never guesses paths; give it one of these:
   an official build (or want a faster dnnl/onednn backend), download
   `lc0-...-windows-cpu-...zip` from
   https://github.com/LeelaChessZero/lc0/releases and use that instead.
-- **Stockfish**: download from https://stockfishchess.org/download/, then drop
-  `stockfish.exe` into `engines\`, set `STOCKFISH_PATH`, or pass `--stockfish`.
+- **Stockfish**: a Windows build is committed at `dist\windows\stockfish.exe`
+  (Stockfish 16, x86-64 sse41-popcnt for broad CPU compatibility, MinGW
+  cross-build, NNUE net `nn-5af11540bbfe` embedded — the same engine version
+  the test suite ran against). Same drill:
+
+  ```bat
+  copy dist\windows\stockfish.exe engines\stockfish.exe
+  ```
+
+  Official (and faster, AVX2) builds: https://stockfishchess.org/download/.
+
+Then verify everything in one shot:
+
+```bat
+.venv\Scripts\python maia_diff.py --check
+```
+
+which finds the engines, checks all five weight files, and runs a
+one-position smoke test through both engines.
 
 Maia weights (maia-1100 … maia-1900, from
 [CSSLab/maia-chess](https://github.com/CSSLab/maia-chess), GPL-3.0) are
@@ -87,14 +110,21 @@ Validate the pipeline any time with the committed sample:
 Expected: exactly one LESSON at move 11 (Maia-1500 grabs with the queen,
 Qxb5+??; Maia-1700 finds Bxb5+, which Stockfish endorses).
 
-## Notes / v1 limitations
+## Tests
+
+```bat
+.venv\Scripts\python -m unittest test_maia_diff -v
+```
+
+Covers band selection, the LESSON/engine-only decision logic, lc0 policy
+parsing (including Chess960-style castling normalization), and sample-game
+legality. No engines needed.
+
+## Notes / limitations
 
 - One Stockfish query per distinct candidate move per position (up to ~4 ×
   0.25 s), plus two persistent lc0 processes — a full game analyzes in about
   a minute on a laptop CPU.
-- The "engine-only" filter is a membership test (SF top ∉ {Maia moves}). A
-  finer version would threshold on Maia's policy probability for the SF move;
-  planned for v2.
 - `--fetch` uses `https://api.chess.com/pub/player/<user>/games/{archives}`.
   It could not be live-tested from the development container (network policy
   blocks api.chess.com) but follows the documented public API; if it
