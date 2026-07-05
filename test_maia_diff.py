@@ -7,8 +7,8 @@ import unittest
 
 import chess
 
-from maia_diff import (classify, load_pgn_games, nearest_band,
-                       parse_verbose_stats, target_band)
+from maia_diff import (api_get, classify, fetch_games, load_pgn_games,
+                       nearest_band, parse_verbose_stats, target_band)
 
 
 class TestBands(unittest.TestCase):
@@ -94,6 +94,40 @@ class TestClassify(unittest.TestCase):
         self.assertTrue(f.engine_only)
         f = classify(**{**self.BASE, "p_cur_sf": None, "p_tgt_sf": None})
         self.assertFalse(f.engine_only)  # sf == m_tgt
+
+
+class TestFetchSecurity(unittest.TestCase):
+    def test_rejects_url_injecting_username(self):
+        for bad in ("a/../../admin", "user?x=1", "a b", "x" * 65, "",
+                    "user#frag", "näme"):
+            with self.assertRaises(SystemExit, msg=bad):
+                fetch_games(bad, 1)
+
+    def test_api_get_pins_origin(self):
+        for url in ("https://evil.example/pub/x",
+                    "http://api.chess.com/pub/x",          # not https
+                    "https://api.chess.com.evil.example/pub/x"):
+            with self.assertRaises(ValueError, msg=url):
+                api_get(url)
+
+
+class TestHtmlEscaping(unittest.TestCase):
+    def test_untrusted_pgn_headers_are_escaped(self):
+        from html_report import write_report
+        from maia_diff import GameReport
+        import tempfile
+        from pathlib import Path
+
+        evil = '<script>alert(1)</script>'
+        report = GameReport(
+            headers={"White": evil, "Black": "o", "Date": "?", "Result": "*"},
+            player_color=chess.WHITE, band_cur=1500, band_tgt=1700, rows=[])
+        with tempfile.TemporaryDirectory() as d:
+            out = Path(d) / "r.html"
+            write_report([report], out)
+            html = out.read_text(encoding="utf-8")
+        self.assertNotIn(evil, html)
+        self.assertIn("&lt;script&gt;", html)
 
 
 class TestPgnLoading(unittest.TestCase):

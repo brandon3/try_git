@@ -27,9 +27,14 @@ instructions if not found.
 """
 
 import argparse
+import hashlib
+import io
+import json
+import os
 import re
 import shutil
 import sys
+import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -42,6 +47,20 @@ DEFAULT_WEIGHTS_DIR = REPO_ROOT / "weights"
 MAIA_BANDS = [1100, 1300, 1500, 1700, 1900]
 
 MATE_CP = 10_000  # score assigned to forced mates when converting to centipawns
+
+# Integrity: SHA-256 of the Maia networks as published in CSSLab/maia-chess.
+# `--check` verifies the local files against these.
+WEIGHT_SHA256 = {
+    1100: "e1cf1cd0c96b8a4fa6a275f4b9fd54ed1ffebf9fe44641b9fceded310e9619c4",
+    1300: "36195f87bf4761834baa0bf87472b18509a7261a9d7d6f1a8443261369a733f2",
+    1500: "35ab6f20421d59e1df3b17c5a5016947af4c6761368ef84044a9a9c7619a9a00",
+    1700: "d277eacd792d340a30abb464dc65127254e65cac57abca17facc469889b96478",
+    1900: "e2f565f42d7cd9f122557e6dc4eb84e5bbaedceda1d404dc485d3611c7c97a12",
+}
+
+CHESSCOM_API = "https://api.chess.com/pub"
+USERNAME_RE = re.compile(r"[A-Za-z0-9_.-]{1,64}")
+MAX_API_BYTES = 64 * 1024 * 1024  # refuse absurdly large API responses
 
 # lc0 VerboseMoveStats line, e.g.:
 # "e2e4  (293 ) N: 0 (+ 0) (P:  8.75%) (Q: ...)"
@@ -108,8 +127,6 @@ def classify(*, m_cur: str, m_tgt: str, sf: str, eval_cur: int, eval_tgt: int,
 
 def find_binary(explicit: str | None, env_name: str, names: list[str], label: str) -> str:
     """Locate an engine binary without assuming paths: flag > env var > PATH > ./engines/."""
-    import os
-
     candidates = []
     if explicit:
         candidates.append(Path(explicit))
@@ -191,10 +208,15 @@ def score_cp(info_score: chess.engine.PovScore, pov: chess.Color) -> int:
 class MoveRow:
     ply: int
     move_number: str
+    fen: str                       # position before the move (for diagrams)
     played_san: str
     maia_cur_san: str
     maia_tgt_san: str
     sf_san: str
+    played_uci: str
+    cur_uci: str
+    tgt_uci: str
+    sf_uci: str
     sf_best_cp: int
     played_loss: int
     cur_loss: int
@@ -271,9 +293,11 @@ class Analyzer:
 
         num = f"{(ply // 2) + 1}{'.' if pov == chess.WHITE else '...'}"
         return MoveRow(
-            ply=ply, move_number=num,
+            ply=ply, move_number=num, fen=board.fen(),
             played_san=san(played), maia_cur_san=san(m_cur),
             maia_tgt_san=san(m_tgt), sf_san=san(sf_move),
+            played_uci=played.uci(), cur_uci=m_cur.uci(),
+            tgt_uci=m_tgt.uci(), sf_uci=sf_move.uci(),
             sf_best_cp=best_cp,
             played_loss=max(0, best_cp - evals[played]),
             cur_loss=max(0, best_cp - evals[m_cur]),
@@ -300,6 +324,12 @@ class Analyzer:
         return report
 
 
+def clean(text: str) -> str:
+    """Strip control characters (e.g. ANSI escapes) from untrusted PGN text
+    before it reaches the terminal."""
+    return re.sub(r"[\x00-\x1f\x7f]", "", text)
+
+
 def detect_player_color(headers: dict, player: str | None) -> chess.Color:
     if player:
         if headers.get("White", "").lower() == player.lower():
@@ -307,7 +337,8 @@ def detect_player_color(headers: dict, player: str | None) -> chess.Color:
         if headers.get("Black", "").lower() == player.lower():
             return chess.BLACK
         print(f"warning: '{player}' not in PGN headers "
-              f"(White={headers.get('White')}, Black={headers.get('Black')}); "
+              f"(White={clean(headers.get('White', '?'))}, "
+              f"Black={clean(headers.get('Black', '?'))}); "
               "defaulting to White", file=sys.stderr)
     return chess.WHITE
 
@@ -321,29 +352,70 @@ def detect_rating(headers: dict, color: chess.Color) -> int:
                  "pass --rating to choose the Maia band.")
 
 
-HEADER = (f"{'Move':>7}  {'Played':<8} {'you%':>5} {'Maia-cur':<9} "
-          f"{'Maia-tgt':<9} {'SF top':<8} {'loss(you)':>9} {'loss(cur)':>9} "
-          f"{'loss(tgt)':>9}  Flags")
+# ---------------------------------------------------------------------------
+# Terminal presentation
+# ---------------------------------------------------------------------------
+
+class Style:
+    """ANSI styling that degrades to plain text when unsupported.
+
+    Honors NO_COLOR (https://no-color.org), disables itself when stdout is
+    not a terminal, and nudges Windows terminals into VT mode.
+    """
+
+    enabled = False
+
+    @classmethod
+    def init(cls):
+        cls.enabled = (sys.stdout.isatty()
+                       and not os.environ.get("NO_COLOR")
+                       and os.environ.get("TERM") != "dumb")
+        if cls.enabled and os.name == "nt":
+            os.system("")  # enables ANSI escape processing in cmd/PowerShell
+
+    @classmethod
+    def paint(cls, text: str, *codes: str) -> str:
+        if not cls.enabled or not codes:
+            return text
+        return f"\033[{';'.join(codes)}m{text}\033[0m"
+
+
+BOLD, DIM, GREEN, YELLOW, RED, CYAN = "1", "2", "32", "33", "31", "36"
 
 
 def fmt_prob(p: float | None) -> str:
     return f"{100 * p:.0f}%" if p is not None else "-"
 
 
+def fmt_loss(loss: int, width: int = 9) -> str:
+    text = f"{loss:>{width}}"
+    if loss >= 100:
+        return Style.paint(text, RED)
+    if loss >= 50:
+        return Style.paint(text, YELLOW)
+    return text
+
+
+HEADER = (f"{'Move':>7}  {'Played':<8} {'you%':>5} {'Maia-cur':<9} "
+          f"{'Maia-tgt':<9} {'SF top':<8} {'loss(you)':>9} {'loss(cur)':>9} "
+          f"{'loss(tgt)':>9}  Flags")
+
+
 def format_row(r: MoveRow) -> str:
     flags = []
     if r.lesson:
-        flags.append("LESSON")
+        flags.append(Style.paint("LESSON", BOLD, GREEN))
     if r.engine_only:
-        flags.append("engine-only")
+        flags.append(Style.paint("engine-only", DIM))
     if r.played_san == r.maia_tgt_san:
-        flags.append("=tgt")
+        flags.append(Style.paint("=tgt", CYAN))
     elif r.played_san == r.maia_cur_san:
         flags.append("=cur")
     return (f"{r.move_number:>7}  {r.played_san:<8} "
-            f"{fmt_prob(r.played_prob_cur):>5} {r.maia_cur_san:<9} "
-            f"{r.maia_tgt_san:<9} {r.sf_san:<8} {r.played_loss:>9} "
-            f"{r.cur_loss:>9} {r.tgt_loss:>9}  {' '.join(flags)}")
+            f"{Style.paint(f'{fmt_prob(r.played_prob_cur):>5}', DIM)} "
+            f"{r.maia_cur_san:<9} {r.maia_tgt_san:<9} {r.sf_san:<8} "
+            f"{fmt_loss(r.played_loss)} {fmt_loss(r.cur_loss)} "
+            f"{fmt_loss(r.tgt_loss)}  {' '.join(flags)}")
 
 
 def print_summary(report: GameReport):
@@ -355,8 +427,8 @@ def print_summary(report: GameReport):
     h = report.headers
     who = "White" if report.player_color == chess.WHITE else "Black"
     print()
-    print(f"=== Summary: {h.get('White','?')} vs {h.get('Black','?')} "
-          f"({h.get('Date','?')}, {h.get('Result','?')}) — you were {who} ===")
+    print(f"=== Summary: {clean(h.get('White', '?'))} vs {clean(h.get('Black', '?'))} "
+          f"({clean(h.get('Date', '?'))}, {clean(h.get('Result', '?'))}) — you were {who} ===")
     print(f"Maia bands: current={report.band_cur}, target={report.band_tgt}")
     agree_cur = sum(1 for r in rows if r.played_san == r.maia_cur_san)
     agree_tgt = sum(1 for r in rows if r.played_san == r.maia_tgt_san)
@@ -374,7 +446,7 @@ def print_summary(report: GameReport):
         print(f"  avg 'humanness' of your moves at {report.band_cur} "
               f"(policy %): {100 * sum(probs) / len(probs):.0f}%")
     print(f"  engine-only SF tops (filtered from lessons): {eng_only}")
-    print(f"  LESSONS (human-learnable deltas): {len(lessons)}")
+    print(f"  {Style.paint(f'LESSONS (human-learnable deltas): {len(lessons)}', BOLD, GREEN)}")
     for r in lessons:
         seen = (f"; only {fmt_prob(r.tgt_prob_cur)} of {report.band_cur}s "
                 f"consider it" if r.tgt_prob_cur is not None else "")
@@ -382,38 +454,52 @@ def print_summary(report: GameReport):
                  if r.tgt_prob_tgt is not None else "")
         print(f"    {r.move_number:>7} you played {r.played_san} "
               f"(loss {r.played_loss}cp); a {report.band_tgt}-rated player "
-              f"finds {r.maia_tgt_san}{finds} (loss {r.tgt_loss}cp), "
+              f"finds {Style.paint(r.maia_tgt_san, BOLD, GREEN)}{finds} "
+              f"(loss {r.tgt_loss}cp), "
               f"while {report.band_cur} plays {r.maia_cur_san} "
               f"(loss {r.cur_loss}cp){seen}")
 
 
+def api_get(url: str):
+    """GET a chess.com API URL with scheme/host pinning and a size cap.
+
+    Archive URLs are taken from API responses, so re-validate every URL
+    against the API origin before following it.
+    """
+    if not url.startswith(CHESSCOM_API + "/"):
+        raise ValueError(f"refusing non-chess.com API URL: {url!r}")
+    req = urllib.request.Request(url, headers={"User-Agent": "maia-diff-trainer"})
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        data = resp.read(MAX_API_BYTES + 1)
+    if len(data) > MAX_API_BYTES:
+        raise ValueError(f"API response exceeds {MAX_API_BYTES} bytes")
+    return json.loads(data)
+
+
 def fetch_games(username: str, count: int) -> list:
     """Fetch the player's most recent games from the chess.com public API."""
-    import io
-    import json
-    import urllib.request
-
-    def get(url):
-        req = urllib.request.Request(url, headers={"User-Agent": "maia-diff-trainer"})
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            return json.load(resp)
-
+    if not USERNAME_RE.fullmatch(username):
+        sys.exit("error: username may only contain letters, digits, '_', "
+                 "'.', '-' (max 64 chars)")
     try:
-        archives = get(f"https://api.chess.com/pub/player/{username}/games/archives")["archives"]
+        archives = api_get(f"{CHESSCOM_API}/player/{username}/games/archives")["archives"]
+        if not (isinstance(archives, list)
+                and all(isinstance(u, str) for u in archives)):
+            raise ValueError("malformed archives listing")
+        games = []
+        for month_url in reversed(archives):
+            month = api_get(month_url).get("games", [])
+            games.extend(reversed(month))  # newest first
+            if len(games) >= count:
+                break
     except Exception as e:
-        sys.exit(f"error: could not reach chess.com API ({e}). "
+        sys.exit(f"error: could not fetch games from chess.com ({e}). "
                  "If you're offline or the network blocks api.chess.com, "
                  "export a PGN and use --pgn instead.")
-    games = []
-    for month_url in reversed(archives):
-        month = get(month_url)["games"]
-        games.extend(reversed(month))  # newest first
-        if len(games) >= count:
-            break
     out = []
     for g in games[:count]:
-        pgn = g.get("pgn")
-        if pgn:
+        pgn = g.get("pgn") if isinstance(g, dict) else None
+        if isinstance(pgn, str):
             parsed = chess.pgn.read_game(io.StringIO(pgn))
             if parsed:
                 out.append(parsed)
@@ -440,11 +526,16 @@ def run_check(args) -> None:
     sf_path = find_binary(args.stockfish, "STOCKFISH_PATH", ["stockfish"], "stockfish")
     print(f"lc0       : {lc0_path}")
     print(f"stockfish : {sf_path}")
-    missing = [b for b in MAIA_BANDS
-               if not (args.weights_dir / f"maia-{b}.pb.gz").is_file()]
+    problems = []
+    for band in MAIA_BANDS:
+        path = args.weights_dir / f"maia-{band}.pb.gz"
+        if not path.is_file():
+            problems.append(f"maia-{band}: missing")
+        elif hashlib.sha256(path.read_bytes()).hexdigest() != WEIGHT_SHA256[band]:
+            problems.append(f"maia-{band}: SHA-256 MISMATCH — re-download it")
     print(f"weights   : {args.weights_dir} "
-          f"({'all bands present' if not missing else 'MISSING: ' + str(missing)})")
-    ok &= not missing
+          f"({'all bands present, hashes verified' if not problems else '; '.join(problems)})")
+    ok &= not problems
 
     board = chess.Board()
     maia = MaiaEngine(lc0_path, maia_weight_path(1500, args.weights_dir))
@@ -498,7 +589,11 @@ def main():
     ap.add_argument("--human-prob", type=float, default=0.10,
                     help="Maia policy prob below which a SF move counts as "
                          "engine-only, checked at both bands (default 0.10)")
+    ap.add_argument("--html", type=Path, metavar="FILE",
+                    help="also write a self-contained HTML report with board "
+                         "diagrams for each lesson")
     args = ap.parse_args()
+    Style.init()
 
     if args.check:
         run_check(args)
@@ -521,10 +616,10 @@ def main():
         rating = args.rating or detect_rating(headers, color)
         band_cur = nearest_band(rating)
         band_tgt = target_band(band_cur, args.target_delta)
-        print(f"\n### {headers.get('White','?')} ({headers.get('WhiteElo','?')}) vs "
-              f"{headers.get('Black','?')} ({headers.get('BlackElo','?')}) "
-              f"{headers.get('Date','')} — rating {rating} -> bands {band_cur}/{band_tgt}")
-        print(HEADER)
+        print(f"\n### {clean(headers.get('White', '?'))} ({clean(headers.get('WhiteElo', '?'))}) vs "
+              f"{clean(headers.get('Black', '?'))} ({clean(headers.get('BlackElo', '?'))}) "
+              f"{clean(headers.get('Date', ''))} — rating {rating} -> bands {band_cur}/{band_tgt}")
+        print(Style.paint(HEADER, BOLD))
         an = Analyzer(lc0_path, sf_path, band_cur, band_tgt, args.weights_dir,
                       chess.engine.Limit(time=args.sf_movetime),
                       args.endorse_cp, args.gain_cp, args.human_prob)
@@ -539,6 +634,11 @@ def main():
         total = sum(len(r.rows) for r in reports)
         lessons = sum(1 for r in reports for row in r.rows if row.lesson)
         print(f"\n=== Batch: {len(reports)} games, {total} moves, {lessons} lessons ===")
+
+    if args.html:
+        from html_report import write_report
+        write_report(reports, args.html)
+        print(f"\nHTML report written to {args.html}")
 
 
 if __name__ == "__main__":

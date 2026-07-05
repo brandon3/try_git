@@ -93,7 +93,16 @@ installed from your distro/conda.
 
 :: analyze a PGN file instead
 .venv\Scripts\python maia_diff.py --pgn mygame.pgn
+
+:: also write a shareable HTML report with a board diagram per lesson
+.venv\Scripts\python maia_diff.py --fetch barec --games 5 --html report.html
 ```
+
+The terminal table is colorized when stdout is a terminal (respects
+`NO_COLOR`). The `--html` report is a single self-contained file — no
+network, no scripts — with lesson cards (SVG boards, arrows for the
+target/played/Maia-current moves) and the full move table per game; it
+follows your OS light/dark theme.
 
 Your rating is read from the PGN `WhiteElo`/`BlackElo` header for your side
 and rounded to the nearest Maia band; the target band is +200 (capped at
@@ -119,6 +128,19 @@ Qxb5+??; Maia-1700 finds Bxb5+, which Stockfish endorses).
 Covers band selection, the LESSON/engine-only decision logic, lc0 policy
 parsing (including Chess960-style castling normalization), and sample-game
 legality. No engines needed.
+
+## Security notes
+
+- `--fetch` validates the username charset, pins every request (including
+  archive URLs read from API responses) to `https://api.chess.com/pub`, and
+  caps response sizes.
+- `--check` verifies the SHA-256 of all five Maia weight files against the
+  published CSSLab networks, so a corrupted or tampered download is caught
+  before it ever reaches lc0.
+- PGN headers are untrusted input; the HTML report escapes them everywhere
+  (covered by tests).
+- Engine binaries run as your user: only point `--lc0`/`--stockfish` at
+  binaries you trust.
 
 ## Notes / limitations
 
