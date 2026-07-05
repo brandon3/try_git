@@ -7,8 +7,20 @@ import unittest
 
 import chess
 
-from maia_diff import (api_get, classify, fetch_games, load_pgn_games,
-                       nearest_band, parse_verbose_stats, target_band)
+from maia_diff import (GameReport, MoveRow, api_get, classify, fetch_games,
+                       load_pgn_games, loss_severity, nearest_band,
+                       parse_verbose_stats, summarize, target_band)
+
+
+def make_row(**kw):
+    base = dict(move_number="1.", fen=chess.STARTING_FEN, played_san="e4",
+                maia_cur_san="e4", maia_tgt_san="e4", sf_san="e4",
+                played_uci="e2e4", cur_uci="e2e4", tgt_uci="e2e4",
+                played_loss=0, cur_loss=0, tgt_loss=0, played_prob_cur=0.5,
+                tgt_prob_tgt=0.5, tgt_prob_cur=0.5, engine_only=False,
+                lesson=False)
+    base.update(kw)
+    return MoveRow(**base)
 
 
 class TestBands(unittest.TestCase):
@@ -94,6 +106,39 @@ class TestClassify(unittest.TestCase):
         self.assertTrue(f.engine_only)
         f = classify(**{**self.BASE, "p_cur_sf": None, "p_tgt_sf": None})
         self.assertFalse(f.engine_only)  # sf == m_tgt
+
+
+class TestRowTagsAndStats(unittest.TestCase):
+    def test_tag_precedence_tgt_over_cur(self):
+        r = make_row()  # played == cur == tgt
+        self.assertEqual(r.tags(), ["=tgt"])
+
+    def test_tags_full(self):
+        r = make_row(maia_tgt_san="d4", lesson=True, engine_only=True)
+        self.assertEqual(r.tags(), ["lesson", "engine-only", "=cur"])
+
+    def test_loss_severity_thresholds(self):
+        self.assertIsNone(loss_severity(49))
+        self.assertEqual(loss_severity(50), "warn")
+        self.assertEqual(loss_severity(100), "bad")
+
+    def test_summarize_counts_and_zero_guard(self):
+        empty = GameReport(headers={}, player_color=chess.WHITE,
+                           band_cur=1500, band_tgt=1700, rows=[])
+        s = summarize(empty)
+        self.assertEqual((s.moves, s.avg_loss, s.pct(s.agree_cur)), (0, 0.0, 0.0))
+        rep = GameReport(headers={}, player_color=chess.WHITE,
+                         band_cur=1500, band_tgt=1700,
+                         rows=[make_row(played_loss=40),
+                               make_row(played_san="d4", played_uci="d2d4",
+                                        lesson=True, played_prob_cur=None)])
+        s = summarize(rep)
+        self.assertEqual(s.moves, 2)
+        self.assertEqual(s.agree_cur, 1)   # second row diverges
+        self.assertEqual(s.agree_tgt, 1)
+        self.assertEqual(len(s.lessons), 1)
+        self.assertEqual(s.avg_loss, 20.0)
+        self.assertEqual(s.humanness, 0.5)  # None prob excluded
 
 
 class TestFetchSecurity(unittest.TestCase):

@@ -197,16 +197,11 @@ class MaiaEngine:
 
 
 def score_cp(info_score: chess.engine.PovScore, pov: chess.Color) -> int:
-    s = info_score.pov(pov)
-    if s.is_mate():
-        m = s.mate()
-        return MATE_CP - abs(m) if m > 0 else -MATE_CP + abs(m)
-    return s.score()
+    return info_score.pov(pov).score(mate_score=MATE_CP)
 
 
 @dataclass
 class MoveRow:
-    ply: int
     move_number: str
     fen: str                       # position before the move (for diagrams)
     played_san: str
@@ -216,8 +211,6 @@ class MoveRow:
     played_uci: str
     cur_uci: str
     tgt_uci: str
-    sf_uci: str
-    sf_best_cp: int
     played_loss: int
     cur_loss: int
     tgt_loss: int
@@ -226,6 +219,31 @@ class MoveRow:
     tgt_prob_cur: float | None     # policy prob of maia-tgt move at your band
     engine_only: bool
     lesson: bool
+
+    @property
+    def matched_cur(self) -> bool:
+        return self.played_san == self.maia_cur_san
+
+    @property
+    def matched_tgt(self) -> bool:
+        return self.played_san == self.maia_tgt_san
+
+    @property
+    def matched_sf(self) -> bool:
+        return self.played_san == self.sf_san
+
+    def tags(self) -> list:
+        """Semantic flag tokens; renderers only style them."""
+        out = []
+        if self.lesson:
+            out.append("lesson")
+        if self.engine_only:
+            out.append("engine-only")
+        if self.matched_tgt:
+            out.append("=tgt")
+        elif self.matched_cur:
+            out.append("=cur")
+        return out
 
 
 @dataclass
@@ -237,8 +255,87 @@ class GameReport:
     rows: list = field(default_factory=list)
 
 
+@dataclass
+class Stats:
+    """Per-game aggregates; the single source both renderers consume."""
+    moves: int
+    agree_cur: int
+    agree_tgt: int
+    agree_sf: int
+    engine_only: int
+    avg_loss: float
+    humanness: float | None   # mean policy prob of played moves, or None
+    lessons: list             # the LESSON rows themselves
+
+    def pct(self, count: int) -> float:
+        return 100 * count / self.moves if self.moves else 0.0
+
+
+def summarize(report: GameReport) -> Stats:
+    rows = report.rows
+    n = len(rows)
+    probs = [r.played_prob_cur for r in rows if r.played_prob_cur is not None]
+    return Stats(
+        moves=n,
+        agree_cur=sum(r.matched_cur for r in rows),
+        agree_tgt=sum(r.matched_tgt for r in rows),
+        agree_sf=sum(r.matched_sf for r in rows),
+        engine_only=sum(r.engine_only for r in rows),
+        avg_loss=sum(r.played_loss for r in rows) / n if n else 0.0,
+        humanness=sum(probs) / len(probs) if probs else None,
+        lessons=[r for r in rows if r.lesson],
+    )
+
+
+LOSS_WARN, LOSS_BAD = 50, 100  # centipawn-loss severity thresholds
+
+
+def loss_severity(loss: int) -> str | None:
+    if loss >= LOSS_BAD:
+        return "bad"
+    if loss >= LOSS_WARN:
+        return "warn"
+    return None
+
+
+class EnginePool:
+    """Owns the engine processes; spawns each at most once per run.
+
+    Batch runs reuse Maia engines across games with the same band and share
+    a single Stockfish process, instead of paying startup per game.
+    """
+
+    def __init__(self, lc0_path: str, sf_path: str, weights_dir: Path):
+        self.lc0_path = lc0_path
+        self.sf_path = sf_path
+        self.weights_dir = weights_dir
+        self._maia: dict = {}
+        self._sf = None
+
+    def maia(self, band: int) -> MaiaEngine:
+        if band not in self._maia:
+            self._maia[band] = MaiaEngine(
+                self.lc0_path, maia_weight_path(band, self.weights_dir))
+        return self._maia[band]
+
+    @property
+    def sf(self) -> chess.engine.SimpleEngine:
+        if self._sf is None:
+            self._sf = chess.engine.SimpleEngine.popen_uci(self.sf_path)
+        return self._sf
+
+    def close(self):
+        for engine in self._maia.values():
+            engine.quit()
+        if self._sf is not None:
+            try:
+                self._sf.quit()
+            except Exception:
+                pass
+
+
 class Analyzer:
-    def __init__(self, lc0_path, sf_path, band_cur, band_tgt, weights_dir,
+    def __init__(self, pool: EnginePool, band_cur, band_tgt,
                  sf_limit, endorse_cp, gain_cp, human_prob):
         self.sf_limit = sf_limit
         self.endorse_cp = endorse_cp
@@ -246,24 +343,26 @@ class Analyzer:
         self.human_prob = human_prob
         self.band_cur = band_cur
         self.band_tgt = band_tgt
-        self.maia_cur = MaiaEngine(lc0_path, maia_weight_path(band_cur, weights_dir))
-        self.maia_tgt = MaiaEngine(lc0_path, maia_weight_path(band_tgt, weights_dir))
-        self.sf = chess.engine.SimpleEngine.popen_uci(sf_path)
+        self.maia_cur = pool.maia(band_cur)
+        self.maia_tgt = pool.maia(band_tgt)
+        self.sf = pool.sf
 
-    def close(self):
-        self.maia_cur.quit()
-        self.maia_tgt.quit()
-        try:
-            self.sf.quit()
-        except Exception:
-            pass
+    def eval_moves(self, board: chess.Board, moves: list, pov: chess.Color) -> dict:
+        """Evals (cp, from pov) of forcing each move at the root — one
+        multipv search for all of them instead of a search per move."""
+        if not moves:
+            return {}
+        infos = self.sf.analyse(board, self.sf_limit,
+                                root_moves=moves, multipv=len(moves))
+        evals = {info["pv"][0]: score_cp(info["score"], pov)
+                 for info in infos if "pv" in info and "score" in info}
+        for move in moves:  # engine dropped a line (rare): search it alone
+            if move not in evals:
+                info = self.sf.analyse(board, self.sf_limit, root_moves=[move])
+                evals[move] = score_cp(info["score"], pov)
+        return evals
 
-    def eval_move(self, board: chess.Board, move: chess.Move, pov: chess.Color) -> int:
-        """Eval (cp, from pov) of the position after forcing `move` at the root."""
-        info = self.sf.analyse(board, self.sf_limit, root_moves=[move])
-        return score_cp(info["score"], pov)
-
-    def analyze_position(self, board: chess.Board, played: chess.Move, ply: int) -> MoveRow:
+    def analyze_position(self, board: chess.Board, played: chess.Move) -> MoveRow:
         pov = board.turn
         san = board.san
 
@@ -274,11 +373,10 @@ class Analyzer:
         sf_move = best_info["pv"][0]
         best_cp = score_cp(best_info["score"], pov)
 
-        # Eval each distinct candidate once; SF top move's eval is best_cp.
+        # Eval the distinct non-SF candidates in one multipv search.
         evals = {sf_move: best_cp}
-        for mv in {played, m_cur, m_tgt}:
-            if mv not in evals:
-                evals[mv] = self.eval_move(board, mv, pov)
+        evals.update(self.eval_moves(
+            board, [m for m in {played, m_cur, m_tgt} if m != sf_move], pov))
 
         def prob(policy, move):
             return policy.get(move.uci()) if policy else None
@@ -291,14 +389,12 @@ class Analyzer:
             human_prob=self.human_prob,
         )
 
-        num = f"{(ply // 2) + 1}{'.' if pov == chess.WHITE else '...'}"
+        num = f"{board.fullmove_number}{'.' if pov == chess.WHITE else '...'}"
         return MoveRow(
-            ply=ply, move_number=num, fen=board.fen(),
+            move_number=num, fen=board.fen(),
             played_san=san(played), maia_cur_san=san(m_cur),
             maia_tgt_san=san(m_tgt), sf_san=san(sf_move),
-            played_uci=played.uci(), cur_uci=m_cur.uci(),
-            tgt_uci=m_tgt.uci(), sf_uci=sf_move.uci(),
-            sf_best_cp=best_cp,
+            played_uci=played.uci(), cur_uci=m_cur.uci(), tgt_uci=m_tgt.uci(),
             played_loss=max(0, best_cp - evals[played]),
             cur_loss=max(0, best_cp - evals[m_cur]),
             tgt_loss=max(0, best_cp - evals[m_tgt]),
@@ -309,17 +405,18 @@ class Analyzer:
         )
 
     def analyze_game(self, game: chess.pgn.Game, player: str | None,
-                     both_sides: bool) -> GameReport:
+                     both_sides: bool, on_row=None) -> GameReport:
         headers = dict(game.headers)
         color = detect_player_color(headers, player)
         report = GameReport(headers=headers, player_color=color,
                             band_cur=self.band_cur, band_tgt=self.band_tgt)
         board = game.board()
-        for ply, move in enumerate(game.mainline_moves()):
+        for move in game.mainline_moves():
             if both_sides or board.turn == color:
-                row = self.analyze_position(board, move, ply)
+                row = self.analyze_position(board, move)
                 report.rows.append(row)
-                print(format_row(row), flush=True)
+                if on_row:
+                    on_row(row)
             board.push(move)
         return report
 
@@ -389,11 +486,8 @@ def fmt_prob(p: float | None) -> str:
 
 def fmt_loss(loss: int, width: int = 9) -> str:
     text = f"{loss:>{width}}"
-    if loss >= 100:
-        return Style.paint(text, RED)
-    if loss >= 50:
-        return Style.paint(text, YELLOW)
-    return text
+    color = {"bad": RED, "warn": YELLOW}.get(loss_severity(loss))
+    return Style.paint(text, color) if color else text
 
 
 HEADER = (f"{'Move':>7}  {'Played':<8} {'you%':>5} {'Maia-cur':<9} "
@@ -401,16 +495,15 @@ HEADER = (f"{'Move':>7}  {'Played':<8} {'you%':>5} {'Maia-cur':<9} "
           f"{'loss(tgt)':>9}  Flags")
 
 
+TAG_STYLE = {"lesson": ("LESSON", (BOLD, GREEN)),
+             "engine-only": ("engine-only", (DIM,)),
+             "=tgt": ("=tgt", (CYAN,)),
+             "=cur": ("=cur", ())}
+
+
 def format_row(r: MoveRow) -> str:
-    flags = []
-    if r.lesson:
-        flags.append(Style.paint("LESSON", BOLD, GREEN))
-    if r.engine_only:
-        flags.append(Style.paint("engine-only", DIM))
-    if r.played_san == r.maia_tgt_san:
-        flags.append(Style.paint("=tgt", CYAN))
-    elif r.played_san == r.maia_cur_san:
-        flags.append("=cur")
+    flags = [Style.paint(text, *codes) if codes else text
+             for text, codes in (TAG_STYLE[t] for t in r.tags())]
     return (f"{r.move_number:>7}  {r.played_san:<8} "
             f"{Style.paint(f'{fmt_prob(r.played_prob_cur):>5}', DIM)} "
             f"{r.maia_cur_san:<9} {r.maia_tgt_san:<9} {r.sf_san:<8} "
@@ -419,9 +512,8 @@ def format_row(r: MoveRow) -> str:
 
 
 def print_summary(report: GameReport):
-    rows = report.rows
-    n = len(rows)
-    if not n:
+    s = summarize(report)
+    if not s.moves:
         print("no moves analyzed")
         return
     h = report.headers
@@ -430,24 +522,17 @@ def print_summary(report: GameReport):
     print(f"=== Summary: {clean(h.get('White', '?'))} vs {clean(h.get('Black', '?'))} "
           f"({clean(h.get('Date', '?'))}, {clean(h.get('Result', '?'))}) — you were {who} ===")
     print(f"Maia bands: current={report.band_cur}, target={report.band_tgt}")
-    agree_cur = sum(1 for r in rows if r.played_san == r.maia_cur_san)
-    agree_tgt = sum(1 for r in rows if r.played_san == r.maia_tgt_san)
-    agree_sf = sum(1 for r in rows if r.played_san == r.sf_san)
-    lessons = [r for r in rows if r.lesson]
-    eng_only = sum(1 for r in rows if r.engine_only)
-    avg_loss = sum(r.played_loss for r in rows) / n
-    probs = [r.played_prob_cur for r in rows if r.played_prob_cur is not None]
-    print(f"Moves analyzed: {n}")
-    print(f"  matched Maia-current: {agree_cur}/{n} ({100*agree_cur/n:.0f}%)")
-    print(f"  matched Maia-target : {agree_tgt}/{n} ({100*agree_tgt/n:.0f}%)")
-    print(f"  matched Stockfish   : {agree_sf}/{n} ({100*agree_sf/n:.0f}%)")
-    print(f"  avg centipawn loss  : {avg_loss:.0f}")
-    if probs:
+    print(f"Moves analyzed: {s.moves}")
+    print(f"  matched Maia-current: {s.agree_cur}/{s.moves} ({s.pct(s.agree_cur):.0f}%)")
+    print(f"  matched Maia-target : {s.agree_tgt}/{s.moves} ({s.pct(s.agree_tgt):.0f}%)")
+    print(f"  matched Stockfish   : {s.agree_sf}/{s.moves} ({s.pct(s.agree_sf):.0f}%)")
+    print(f"  avg centipawn loss  : {s.avg_loss:.0f}")
+    if s.humanness is not None:
         print(f"  avg 'humanness' of your moves at {report.band_cur} "
-              f"(policy %): {100 * sum(probs) / len(probs):.0f}%")
-    print(f"  engine-only SF tops (filtered from lessons): {eng_only}")
-    print(f"  {Style.paint(f'LESSONS (human-learnable deltas): {len(lessons)}', BOLD, GREEN)}")
-    for r in lessons:
+              f"(policy %): {100 * s.humanness:.0f}%")
+    print(f"  engine-only SF tops (filtered from lessons): {s.engine_only}")
+    print(f"  {Style.paint(f'LESSONS (human-learnable deltas): {len(s.lessons)}', BOLD, GREEN)}")
+    for r in s.lessons:
         seen = (f"; only {fmt_prob(r.tgt_prob_cur)} of {report.band_cur}s "
                 f"consider it" if r.tgt_prob_cur is not None else "")
         finds = (f" ({fmt_prob(r.tgt_prob_tgt)} policy)"
@@ -582,6 +667,9 @@ def main():
     ap.add_argument("--weights-dir", type=Path, default=DEFAULT_WEIGHTS_DIR)
     ap.add_argument("--sf-movetime", type=float, default=0.25,
                     help="stockfish seconds per query (default 0.25)")
+    ap.add_argument("--sf-depth", type=int,
+                    help="use a fixed stockfish depth instead of movetime "
+                         "(reproducible: identical runs give identical output)")
     ap.add_argument("--endorse-cp", type=int, default=50,
                     help="max cp loss for SF to 'endorse' the Maia-target move")
     ap.add_argument("--gain-cp", type=int, default=50,
@@ -610,25 +698,28 @@ def main():
     sf_path = find_binary(args.stockfish, "STOCKFISH_PATH", ["stockfish"], "stockfish")
 
     reports = []
-    for game in games:
-        headers = dict(game.headers)
-        color = detect_player_color(headers, args.player)
-        rating = args.rating or detect_rating(headers, color)
-        band_cur = nearest_band(rating)
-        band_tgt = target_band(band_cur, args.target_delta)
-        print(f"\n### {clean(headers.get('White', '?'))} ({clean(headers.get('WhiteElo', '?'))}) vs "
-              f"{clean(headers.get('Black', '?'))} ({clean(headers.get('BlackElo', '?'))}) "
-              f"{clean(headers.get('Date', ''))} — rating {rating} -> bands {band_cur}/{band_tgt}")
-        print(Style.paint(HEADER, BOLD))
-        an = Analyzer(lc0_path, sf_path, band_cur, band_tgt, args.weights_dir,
-                      chess.engine.Limit(time=args.sf_movetime),
-                      args.endorse_cp, args.gain_cp, args.human_prob)
-        try:
-            report = an.analyze_game(game, args.player, args.both_sides)
-        finally:
-            an.close()
-        reports.append(report)
-        print_summary(report)
+    pool = EnginePool(lc0_path, sf_path, args.weights_dir)
+    try:
+        for game in games:
+            headers = dict(game.headers)
+            color = detect_player_color(headers, args.player)
+            rating = args.rating or detect_rating(headers, color)
+            band_cur = nearest_band(rating)
+            band_tgt = target_band(band_cur, args.target_delta)
+            print(f"\n### {clean(headers.get('White', '?'))} ({clean(headers.get('WhiteElo', '?'))}) vs "
+                  f"{clean(headers.get('Black', '?'))} ({clean(headers.get('BlackElo', '?'))}) "
+                  f"{clean(headers.get('Date', ''))} — rating {rating} -> bands {band_cur}/{band_tgt}")
+            print(Style.paint(HEADER, BOLD))
+            sf_limit = (chess.engine.Limit(depth=args.sf_depth) if args.sf_depth
+                        else chess.engine.Limit(time=args.sf_movetime))
+            an = Analyzer(pool, band_cur, band_tgt, sf_limit,
+                          args.endorse_cp, args.gain_cp, args.human_prob)
+            report = an.analyze_game(game, args.player, args.both_sides,
+                                     on_row=lambda r: print(format_row(r), flush=True))
+            reports.append(report)
+            print_summary(report)
+    finally:
+        pool.close()
 
     if len(reports) > 1:
         total = sum(len(r.rows) for r in reports)

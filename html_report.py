@@ -11,6 +11,8 @@ from pathlib import Path
 import chess
 import chess.svg
 
+from maia_diff import fmt_prob, loss_severity, summarize
+
 ARROW_TGT = "#15803dcc"     # green  — Maia-target move
 ARROW_PLAYED = "#b91c1ccc"  # red    — your move (when it differs)
 ARROW_CUR = "#d97706cc"     # amber  — Maia-current move (when it differs)
@@ -68,41 +70,40 @@ footer { margin-top: 3rem; color: var(--dim); font-size: .85rem; }
 """
 
 
-def _arrow(uci: str, color: str) -> chess.svg.Arrow:
-    move = chess.Move.from_uci(uci)
-    return chess.svg.Arrow(move.from_square, move.to_square, color=color)
-
-
-def _board_svg(row, orientation: chess.Color) -> str:
-    arrows = [_arrow(row.tgt_uci, ARROW_TGT)]
+def _arrow_spec(row) -> list:
+    """(uci, color, label) for each arrow — drives both the SVG and legend,
+    so they can never disagree."""
+    spec = [(row.tgt_uci, ARROW_TGT, "target move")]
     if row.played_uci != row.tgt_uci:
-        arrows.append(_arrow(row.played_uci, ARROW_PLAYED))
+        spec.append((row.played_uci, ARROW_PLAYED, "your move"))
     if row.cur_uci not in (row.played_uci, row.tgt_uci):
-        arrows.append(_arrow(row.cur_uci, ARROW_CUR))
+        spec.append((row.cur_uci, ARROW_CUR, "Maia-current"))
+    return spec
+
+
+def _board_svg(row, orientation: chess.Color, spec: list) -> str:
+    arrows = []
+    for uci, color, _ in spec:
+        move = chess.Move.from_uci(uci)
+        arrows.append(chess.svg.Arrow(move.from_square, move.to_square,
+                                      color=color))
     return chess.svg.board(chess.Board(row.fen), orientation=orientation,
                            arrows=arrows, size=360)
 
 
-def _prob(p) -> str:
-    return f"{100 * p:.0f}%" if p is not None else "–"
-
-
 def _loss_cell(loss: int) -> str:
-    cls = "hot" if loss >= 100 else "warm" if loss >= 50 else "dim" if loss == 0 else ""
+    cls = {"bad": "hot", "warn": "warm"}.get(
+        loss_severity(loss), "dim" if loss == 0 else "")
     return f'<td class="num {cls}">{loss}</td>'
 
 
+BADGE_CLASS = {"lesson": "lesson", "engine-only": "engine", "=tgt": "match",
+               "=cur": "match"}
+
+
 def _flags(row) -> str:
-    out = []
-    if row.lesson:
-        out.append('<span class="badge lesson">lesson</span>')
-    if row.engine_only:
-        out.append('<span class="badge engine">engine-only</span>')
-    if row.played_san == row.maia_tgt_san:
-        out.append('<span class="badge match">=tgt</span>')
-    elif row.played_san == row.maia_cur_san:
-        out.append('<span class="badge match">=cur</span>')
-    return " ".join(out)
+    return " ".join(f'<span class="badge {BADGE_CLASS[t]}">{t}</span>'
+                    for t in row.tags())
 
 
 def _move_table(report) -> str:
@@ -115,7 +116,7 @@ def _move_table(report) -> str:
         body.append(
             f"<tr{cls}><td>{escape(r.move_number)}</td>"
             f"<td><b>{escape(r.played_san)}</b></td>"
-            f'<td class="num dim">{_prob(r.played_prob_cur)}</td>'
+            f'<td class="num dim">{fmt_prob(r.played_prob_cur)}</td>'
             f"<td>{escape(r.maia_cur_san)}</td>"
             f"<td>{escape(r.maia_tgt_san)}</td>"
             f"<td>{escape(r.sf_san)}</td>"
@@ -131,23 +132,18 @@ def _lesson_cards(report) -> str:
         return "<p class='dim'>No human-learnable deltas in this game.</p>"
     cards = []
     for r in lessons:
-        consider = (f" Only {_prob(r.tgt_prob_cur)} of {report.band_cur}s "
+        consider = (f" Only {fmt_prob(r.tgt_prob_cur)} of {report.band_cur}s "
                     f"consider it." if r.tgt_prob_cur is not None else "")
-        pol = (f" ({_prob(r.tgt_prob_tgt)} policy)"
+        pol = (f" ({fmt_prob(r.tgt_prob_tgt)} policy)"
                if r.tgt_prob_tgt is not None else "")
-        legend = [f'<span><span class="k" style="background:{ARROW_TGT[:7]}">'
-                  '</span>target move</span>']
-        if r.played_uci != r.tgt_uci:
-            legend.append(f'<span><span class="k" style="background:'
-                          f'{ARROW_PLAYED[:7]}"></span>your move</span>')
-        if r.cur_uci not in (r.played_uci, r.tgt_uci):
-            legend.append(f'<span><span class="k" style="background:'
-                          f'{ARROW_CUR[:7]}"></span>Maia-current</span>')
+        spec = _arrow_spec(r)
+        legend = [f'<span><span class="k" style="background:{color[:7]}">'
+                  f'</span>{label}</span>' for _, color, label in spec]
         cards.append(f"""
 <div class="card">
   <h3>Move {escape(r.move_number.rstrip('.'))} — study
       <span style="color:var(--green)">{escape(r.maia_tgt_san)}</span></h3>
-  {_board_svg(r, report.player_color)}
+  {_board_svg(r, report.player_color, spec)}
   <p>You played <b>{escape(r.played_san)}</b> (−{r.played_loss}cp).
      A {report.band_tgt}-level player finds
      <b>{escape(r.maia_tgt_san)}</b>{pol} (−{r.tgt_loss}cp), while
@@ -160,16 +156,10 @@ def _lesson_cards(report) -> str:
 
 def _game_section(report, index: int) -> str:
     h = report.headers
-    rows = report.rows
-    n = len(rows) or 1
+    s = summarize(report)
     who = "White" if report.player_color == chess.WHITE else "Black"
-    lessons = sum(1 for r in rows if r.lesson)
-    agree_cur = sum(1 for r in rows if r.played_san == r.maia_cur_san)
-    agree_tgt = sum(1 for r in rows if r.played_san == r.maia_tgt_san)
-    avg_loss = sum(r.played_loss for r in rows) / n
-    probs = [r.played_prob_cur for r in rows if r.played_prob_cur is not None]
-    humanness = (f"<li>humanness <b>{100 * sum(probs) / len(probs):.0f}%</b></li>"
-                 if probs else "")
+    humanness = (f"<li>humanness <b>{100 * s.humanness:.0f}%</b></li>"
+                 if s.humanness is not None else "")
     title = (f"{escape(h.get('White', '?'))} vs {escape(h.get('Black', '?'))}")
     return f"""
 <section>
@@ -177,11 +167,11 @@ def _game_section(report, index: int) -> str:
   <p class="sub">{escape(h.get('Date', '?'))} · {escape(h.get('Result', '?'))}
      · you were {who} · Maia bands {report.band_cur} → {report.band_tgt}</p>
   <ul class="stats">
-    <li>moves <b>{len(rows)}</b></li>
-    <li>lessons <b>{lessons}</b></li>
-    <li>matched Maia-current <b>{100 * agree_cur / n:.0f}%</b></li>
-    <li>matched Maia-target <b>{100 * agree_tgt / n:.0f}%</b></li>
-    <li>avg cp loss <b>{avg_loss:.0f}</b></li>
+    <li>moves <b>{s.moves}</b></li>
+    <li>lessons <b>{len(s.lessons)}</b></li>
+    <li>matched Maia-current <b>{s.pct(s.agree_cur):.0f}%</b></li>
+    <li>matched Maia-target <b>{s.pct(s.agree_tgt):.0f}%</b></li>
+    <li>avg cp loss <b>{s.avg_loss:.0f}</b></li>
     {humanness}
   </ul>
   {_lesson_cards(report)}

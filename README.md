@@ -108,7 +108,9 @@ Your rating is read from the PGN `WhiteElo`/`BlackElo` header for your side
 and rounded to the nearest Maia band; the target band is +200 (capped at
 1900). Override with `--rating`, `--target-delta`. Other knobs:
 `--both-sides`, `--sf-movetime` (default 0.25 s per Stockfish query),
-`--endorse-cp`, `--gain-cp`.
+`--sf-depth` (fixed-depth search instead: slower or faster, but
+reproducible — borderline lessons can't flip between runs), `--endorse-cp`,
+`--gain-cp`, `--human-prob`.
 
 Validate the pipeline any time with the committed sample:
 
@@ -144,9 +146,10 @@ legality. No engines needed.
 
 ## Notes / limitations
 
-- One Stockfish query per distinct candidate move per position (up to ~4 ×
-  0.25 s), plus two persistent lc0 processes — a full game analyzes in about
-  a minute on a laptop CPU.
+- Two Stockfish searches per position (best move, then one multipv search
+  covering all non-best candidates) plus two lc0 policy queries; engines are
+  spawned once per run and reused across batch games. A full game analyzes
+  in ~10 s on a laptop CPU.
 - `--fetch` uses `https://api.chess.com/pub/player/<user>/games/{archives}`.
   It could not be live-tested from the development container (network policy
   blocks api.chess.com) but follows the documented public API; if it
