@@ -2,7 +2,7 @@
    Each puzzle hides 1–3 rules (an attribute varying by row, column, or
    diagonal); the player infers them and completes the grid. */
 
-import { el, svg, shuffle, pick } from '../ui.js';
+import { el, svg, shuffle, pick, revealChoice } from '../ui.js';
 
 const PUZZLES = 8;
 const OPTIONS = 6;
@@ -140,9 +140,7 @@ export default {
             locked = true;
             const right = option === answer;
             if (right) correct++;
-            e.currentTarget.classList.add(right ? 'is-good' : 'is-bad');
-            if (!right) optionButtons[options.indexOf(answer)].classList.add('is-good');
-            dots[round].classList.add(right ? 'is-good' : 'is-bad');
+            revealChoice(e.currentTarget, optionButtons[options.indexOf(answer)], dots[round], right);
             round++;
             timer = setTimeout(next, right ? 650 : 1400);
           },

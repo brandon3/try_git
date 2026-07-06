@@ -2,7 +2,7 @@
    Crystallized intelligence is the domain that most reliably grows with
    deliberate learning; spaced repetition is its best-evidenced method. */
 
-import { el, shuffle } from '../ui.js';
+import { el, shuffle, revealChoice } from '../ui.js';
 import { store, dayKey } from '../store.js';
 import { WORDS } from '../data/words.js';
 
@@ -87,9 +87,7 @@ export default {
             const right = option === entry;
             if (right) correct++;
             reschedule(entry.w, right);
-            e.currentTarget.classList.add(right ? 'is-good' : 'is-bad');
-            if (!right) buttons[options.indexOf(entry)].classList.add('is-good');
-            dots[index].classList.add(right ? 'is-good' : 'is-bad');
+            revealChoice(e.currentTarget, buttons[options.indexOf(entry)], dots[index], right);
             index++;
             timer = setTimeout(next, right ? 700 : 1800);
           },

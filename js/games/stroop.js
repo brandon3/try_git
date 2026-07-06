@@ -2,7 +2,7 @@
    Name the ink, not the word. A century-old measure of selective attention
    and the executive skill of suppressing an automatic response. */
 
-import { el, shuffle, pick, clamp, countdown } from '../ui.js';
+import { el, meter, shuffle, pick, clamp, countdown } from '../ui.js';
 
 const TRIALS = 36;
 const INCONGRUENT_RATE = 0.65;
@@ -42,7 +42,7 @@ export default {
     let trial = null;
     let deadlineTimer, pauseTimer;
 
-    const progress = el('div', { class: 'meter' }, el('div', { class: 'meter-fill' }));
+    const progress = meter();
     const wordBox = el('div', { class: 'st-word' }, ' ');
     const choices = el('div', { class: 'st-choices' },
       inks.map((ink, i) =>
@@ -51,12 +51,12 @@ export default {
           ink.name, el('kbd', {}, i + 1))));
     stage.append(
       el('div', { class: 'stage-head' }, 'Answer with the ink color'),
-      progress, wordBox, choices,
+      progress.node, wordBox, choices,
     );
 
     function next() {
       if (round === TRIALS) return end();
-      progress.firstChild.style.width = `${(round / TRIALS) * 100}%`;
+      progress.set(round / TRIALS);
       const ink = pick(inks);
       const word = Math.random() < INCONGRUENT_RATE
         ? pick(inks.filter((c) => c !== ink)).name

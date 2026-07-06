@@ -2,7 +2,7 @@
    Hold a stream of positions and letters in mind and flag repeats from
    n steps back. The strongest evidence base of any working-memory task. */
 
-import { el, countdown } from '../ui.js';
+import { el, meter, countdown } from '../ui.js';
 
 const LETTERS = ['B', 'H', 'K', 'M', 'Q', 'R', 'T', 'W'];
 const TRIAL_MS = 2400;
@@ -55,7 +55,7 @@ export default {
     let pressed = { cell: false, letter: false };
     let trialTimer, flashTimer;
 
-    const progress = el('div', { class: 'meter' }, el('div', { class: 'meter-fill' }));
+    const progress = meter();
     const cells = Array.from({ length: 9 }, () => el('button', { class: 'nb-cell', tabindex: -1, 'aria-hidden': true }));
     const grid = el('div', { class: 'nb-grid' }, cells);
     const letterBox = el('div', { class: 'nb-letter' }, '·');
@@ -65,14 +65,12 @@ export default {
     };
     stage.append(
       el('div', { class: 'stage-head' }, `Match ${n} back · ${trials} rounds`),
-      progress, grid, letterBox,
+      progress.node, grid, letterBox,
       el('div', { class: 'nb-keys' }, buttons.cell, buttons.letter),
     );
 
-    const isMatch = (kind) => {
-      const key = kind === 'cell' ? 'cell' : 'letter';
-      return index >= n && seq[index][key] === seq[index - n][key];
-    };
+    const isMatch = (kind) =>
+      index >= n && seq[index][kind] === seq[index - n][kind];
 
     function press(kind) {
       if (index < n || pressed[kind]) return;
@@ -92,7 +90,7 @@ export default {
 
       pressed = { cell: false, letter: false };
       for (const b of Object.values(buttons)) b.classList.remove('is-good', 'is-bad');
-      progress.firstChild.style.width = `${(index / trials) * 100}%`;
+      progress.set(index / trials);
 
       const { cell, letter } = seq[index];
       cells[cell].classList.add('is-lit');

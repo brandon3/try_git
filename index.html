@@ -2,13 +2,17 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-T0SZfdyIS+EQIoEOGsR/vCP85wqN4JNEHQ+2wJ68LKE='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; base-uri 'none'; form-action 'none'" />
+  <meta name="referrer" content="no-referrer" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Acumen — Daily Intelligence Trainer</title>
   <meta name="description" content="A daily trainer for the six trainable pillars of intelligence: working memory, fluid reasoning, processing speed, attention, spatial memory, and vocabulary." />
   <meta name="theme-color" content="#14141a" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <!-- Loaded with media="print" so fonts never block first paint; app.js promotes
+       it to media="all" once the module runs (keeps the CSP free of inline JS). -->
+  <link id="webfonts" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" media="print" />
   <link rel="stylesheet" href="css/main.css" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>◉</text></svg>" />
   <script>

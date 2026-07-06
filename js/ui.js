@@ -33,6 +33,22 @@ export const shuffle = (array) => {
 export const pick = (array) => array[Math.floor(Math.random() * array.length)];
 export const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
 
+/** A progress/timer bar; returns the element plus a setter taking a 0–1 fraction.
+    Mirrors ring(), and replaces the meter/meter-fill construct the timed games share. */
+export function meter() {
+  const fill = el('div', { class: 'meter-fill' });
+  const node = el('div', { class: 'meter' }, fill);
+  return { node, set: (f) => { fill.style.width = `${clamp(f, 0, 1) * 100}%`; } };
+}
+
+/** Reveal the outcome of a multiple-choice pick: mark the chosen button, surface
+    the correct one when wrong, and colour the progress dot. Shared by matrix & verbal. */
+export function revealChoice(picked, correctBtn, dot, right) {
+  picked.classList.add(right ? 'is-good' : 'is-bad');
+  if (!right) correctBtn.classList.add('is-good');
+  dot.classList.add(right ? 'is-good' : 'is-bad');
+}
+
 /** Recent scores (0–100) as a 2px line in currentColor, end-dot ringed with
     the card surface so it stays legible over the line. */
 export function sparkline(values, width = 132, height = 36) {
@@ -48,13 +64,15 @@ export function sparkline(values, width = 132, height = 36) {
   const y = (v) => height - pad - (v / 100) * (height - pad * 2);
   const points = shown.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
   const [lx, ly] = [x(shown.length - 1), y(shown.at(-1))];
-  return svg(`<svg class="spark" width="${width}" height="${height}"
-      role="img" aria-label="Recent scores: ${shown.join(', ')}">
+  const node = svg(`<svg class="spark" width="${width}" height="${height}" role="img">
     <polyline points="${points}" fill="none" stroke="currentColor"
       stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
     <circle cx="${lx}" cy="${ly}" r="3" fill="currentColor"
       stroke="var(--card)" stroke-width="2"/>
   </svg>`);
+  // Set the label after parsing so score values are never interpolated into markup.
+  node.setAttribute('aria-label', `Recent scores: ${shown.join(', ')}`);
+  return node;
 }
 
 /** Radial progress ring; returns the element plus a setter to animate it. */

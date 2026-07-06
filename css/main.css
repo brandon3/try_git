@@ -96,7 +96,6 @@ body {
   color: var(--ink);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
   min-height: 100dvh;
 }
 button { font: inherit; color: inherit; cursor: pointer; }
@@ -182,7 +181,6 @@ kbd {
   flex: none;
   color: var(--a-nback);
 }
-.hero-ring .ring { transform: none; }
 .hero-count {
   position: absolute;
   font-family: var(--font-display);

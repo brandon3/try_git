@@ -10,6 +10,11 @@ import { el, svg, sparkline, ring, scoreRing, clamp } from './ui.js';
 const app = document.getElementById('app');
 let activeTeardown = null;
 
+// Promote the web-font stylesheet (loaded with media="print" so it never blocks
+// first paint) to apply now. Done here rather than via an inline onload handler so
+// the page's Content-Security-Policy can stay script-hash-locked with no inline JS.
+document.getElementById('webfonts')?.setAttribute('media', 'all');
+
 /** Swap in a new view, tearing down the outgoing one first. A view may expose
     cleanup via `view.__teardown` (games use this to stop their timers). */
 function show(view) {
@@ -82,7 +87,7 @@ function hero() {
       el('p', {}, line)),
     el('div', { class: 'streak', title: `Best streak: ${best} days` },
       el('span', { class: 'streak-num' }, current),
-      el('span', { class: 'streak-label' }, current === 1 ? 'day streak' : 'day streak')),
+      el('span', { class: 'streak-label' }, 'day streak')),
   );
 }
 

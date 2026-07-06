@@ -2,7 +2,7 @@
    and the "speed of processing" drills with the best trial evidence.
    Translate symbols to digits against the clock. */
 
-import { el, svg, shuffle, countdown } from '../ui.js';
+import { el, svg, meter, shuffle, countdown } from '../ui.js';
 
 const SECONDS = 60;
 const TARGET = 45; // net correct in a minute ≈ score of 100
@@ -53,11 +53,12 @@ export default {
     const legend = el('div', { class: 'sp-legend' },
       names.map((n) => el('div', { class: 'sp-pair' }, glyphSvg(n, 20), el('b', {}, codeOf[n]))));
     const card = el('div', { class: 'sp-card' });
-    const clock = el('div', { class: 'meter' }, el('div', { class: 'meter-fill', style: 'width:100%' }));
+    const clock = meter();
+    clock.set(1);
     const tallyBox = el('div', { class: 'stage-head' }, '0 solved');
     const pad = el('div', { class: 'sp-pad' },
       names.map((n) => el('button', { class: 'btn sp-digit', onclick: () => answer(codeOf[n]) }, codeOf[n])));
-    stage.append(legend, clock, card, tallyBox, pad);
+    stage.append(legend, clock.node, card, tallyBox, pad);
 
     function deal() {
       const next = shuffle(names.filter((n) => n !== current))[0];
@@ -82,7 +83,7 @@ export default {
       const t0 = performance.now();
       ticker = setInterval(() => {
         const left = Math.max(0, SECONDS - (performance.now() - t0) / 1000);
-        clock.firstChild.style.width = `${(left / SECONDS) * 100}%`;
+        clock.set(left / SECONDS);
         if (left === 0) end();
       }, 100);
     }

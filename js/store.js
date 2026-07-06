@@ -34,7 +34,14 @@ function load() {
 }
 
 const state = load();
-const save = () => localStorage.setItem(KEY, JSON.stringify(state));
+// In-memory state is the source of truth for the session; a failed persist
+// (private-mode quota, disabled storage) degrades quietly instead of throwing
+// out through the render path.
+const save = () => {
+  try {
+    localStorage.setItem(KEY, JSON.stringify(state));
+  } catch {}
+};
 
 /** Advance the streak counter, at most once per calendar day. */
 function countStreakDay() {
