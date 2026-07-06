@@ -729,6 +729,62 @@ def write_lessons_pgn(reports: list, path: Path) -> int:
     return len(chapters)
 
 
+def append_progress(reports: list, path: Path) -> None:
+    """Append this run's aggregates to a history file and print the trend.
+
+    Tracks the metrics that reflect durable improvement (avg cp loss,
+    target-band agreement) rather than in-session success — fast visible
+    gains are a poor learning signal.
+    """
+    import datetime as dt
+
+    stats = [summarize(r) for r in reports]
+    moves = sum(s.moves for s in stats)
+    if not moves:
+        return
+    probs = [s.humanness for s in stats if s.humanness is not None]
+    entry = {
+        "date": dt.date.today().isoformat(),
+        "games": len(reports),
+        "moves": moves,
+        "acpl": round(sum(s.avg_loss * s.moves for s in stats) / moves, 1),
+        "agree_tgt_pct": round(100 * sum(s.agree_tgt for s in stats) / moves, 1),
+        "humanness": round(100 * sum(probs) / len(probs), 1) if probs else None,
+        "missed": sum(1 for s in stats for r in s.lessons
+                      if r.lesson_kind == "missed"),
+        "aced": sum(1 for s in stats for r in s.lessons
+                    if r.lesson_kind == "aced"),
+    }
+    history = []
+    if Path(path).is_file():
+        try:
+            loaded = json.loads(Path(path).read_text(encoding="utf-8"))
+            if isinstance(loaded, list):
+                history = loaded
+        except (OSError, ValueError):
+            pass
+    history.append(entry)
+    tmp = Path(str(path) + ".tmp")
+    tmp.write_text(json.dumps(history, indent=1), encoding="utf-8")
+    tmp.replace(path)
+
+    print(f"\nprogress ({len(history)} run(s) tracked in {path}):")
+    def arrow(cur, prev, lower_is_better=False):
+        if prev is None or cur is None or cur == prev:
+            return ""
+        better = cur < prev if lower_is_better else cur > prev
+        return Style.paint(" ↑" if better else " ↓",
+                           GREEN if better else RED)
+    prev = history[-2] if len(history) > 1 else {}
+    print(f"  avg cp loss     : {entry['acpl']}"
+          f"{arrow(entry['acpl'], prev.get('acpl'), lower_is_better=True)}")
+    print(f"  matched +200 band: {entry['agree_tgt_pct']}%"
+          f"{arrow(entry['agree_tgt_pct'], prev.get('agree_tgt_pct'))}")
+    if entry["humanness"] is not None:
+        print(f"  humanness       : {entry['humanness']}%")
+    print(f"  lessons         : {entry['missed']} missed, {entry['aced']} aced")
+
+
 def load_pgn_games(path: Path) -> list:
     games = []
     with open(path, encoding="utf-8", errors="replace") as f:
@@ -832,6 +888,9 @@ def main():
     ap.add_argument("--deck", type=Path, metavar="FILE",
                     help="add missed lessons to a spaced-repetition deck "
                          "(drill it with: python trainer.py drill --deck FILE)")
+    ap.add_argument("--progress", type=Path, metavar="FILE",
+                    help="append this run's aggregate stats to FILE and show "
+                         "the trend vs your previous runs")
     args = ap.parse_args()
     Style.init()
 
@@ -914,6 +973,9 @@ def main():
         print(f"{added} new drill card(s) added to {args.deck} "
               f"({len(deck['cards'])} total, {due} due — "
               f"run: python trainer.py drill --deck {args.deck})")
+
+    if args.progress:
+        append_progress(reports, args.progress)
 
 
 if __name__ == "__main__":

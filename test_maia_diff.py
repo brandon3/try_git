@@ -225,6 +225,32 @@ class TestAnalysisCache(unittest.TestCase):
         self.assertEqual(limit_key(chess.engine.Limit(time=0.25)), "t0.25")
 
 
+class TestProgress(unittest.TestCase):
+    def test_append_progress_accumulates_and_computes(self):
+        import tempfile
+        from pathlib import Path
+        from maia_diff import append_progress
+
+        rep = GameReport(headers={}, player_color=chess.WHITE, band_cur=1500,
+                         band_tgt=1700,
+                         rows=[make_row(played_loss=40),
+                               make_row(played_san="d4", played_uci="d2d4",
+                                        lesson=True)])
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / "progress.json"
+            import io as io_
+            from contextlib import redirect_stdout
+            with redirect_stdout(io_.StringIO()):
+                append_progress([rep], p)
+                append_progress([rep], p)
+            import json as json_
+            history = json_.loads(p.read_text())
+        self.assertEqual(len(history), 2)
+        self.assertEqual(history[0]["moves"], 2)
+        self.assertEqual(history[0]["acpl"], 20.0)
+        self.assertEqual(history[0]["missed"], 1)
+
+
 class TestFetchSecurity(unittest.TestCase):
     def test_rejects_url_injecting_username(self):
         for bad in ("a/../../admin", "user?x=1", "a b", "x" * 65, "",

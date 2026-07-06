@@ -91,10 +91,12 @@ def sm2_update(card: dict, quality: int) -> None:
 
 
 def due_cards(deck: dict) -> list:
+    import random
     cutoff = today()
     due = [(k, c) for k, c in deck["cards"].items() if c["due"] <= cutoff]
-    # Lapsed and newest cards first — the ones you most need.
-    due.sort(key=lambda kc: (-kc[1]["lapses"], kc[1]["added"]), reverse=False)
+    # Interleave: mixing positions from different games/themes beats blocked
+    # repetition for retention (Bjork's "desirable difficulties").
+    random.shuffle(due)
     return due
 
 

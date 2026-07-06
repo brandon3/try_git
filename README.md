@@ -1,5 +1,13 @@
 # Maia move-diff trainer
 
+**Why this instead of chess.com/lichess puzzles?** Those platforms give
+engine-top-line feedback on generic positions. This tool closes a different
+loop: it finds the *human-plausible* improvements in **your own games**
+(what a slightly stronger player would actually play, per Maia), turns the
+ones you missed into a spaced-repetition drill deck, and tracks your
+long-term trend. See [TRAINING.md](TRAINING.md) for the research behind the
+design and the 1400→2200 weekly training loop.
+
 Three-way move diff for chess training. For each of your moves in a game it
 reports:
 
@@ -117,6 +125,19 @@ FEN-start PGN chapter (target move as the main line, explanation as a
 comment) — import it into a lichess study or any drilling tool for spaced
 repetition. Losses that involve forced mates display as `mate` instead of
 meaningless huge centipawn numbers.
+
+## The training loop
+
+- `--deck deck.json` adds every **missed** lesson to a drill deck; then
+  `python trainer.py drill` runs a daily retrieval-practice session in the
+  terminal (type the move from the position; SM-2 spacing; cards are
+  interleaved across games; wrong answers come back tomorrow). `python
+  trainer.py stats` shows deck health, 7-day accuracy, and your daily
+  streak.
+- `--progress progress.json` appends each run's aggregates (avg centipawn
+  loss, +200-band agreement, missed/aced lessons) and prints the trend
+  against your previous runs — the slow-moving numbers that actually track
+  improvement.
 
 Your rating is read from the PGN `WhiteElo`/`BlackElo` header for your side
 and rounded to the nearest Maia band; the target band is +200 (capped at
