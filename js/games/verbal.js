@@ -15,9 +15,14 @@ const wordsByName = new Map(WORDS.map((w) => [w.w, w]));
 function buildQueue() {
   const due = store.srsDue().map((w) => wordsByName.get(w)).filter(Boolean);
   const fresh = WORDS.filter((w) => !store.srsGet(w.w));
-  const learned = WORDS.filter((w) => store.srsGet(w.w));
   const queue = [...shuffle(due), ...shuffle(fresh)];
-  return (queue.length >= SESSION ? queue : [...queue, ...shuffle(learned)]).slice(0, SESSION);
+  if (queue.length < SESSION) {
+    // Top up with already-reviewed words, skipping any that are already queued
+    // (due words live in both pools, so this guards against a word appearing twice).
+    const queued = new Set(queue.map((w) => w.w));
+    queue.push(...shuffle(WORDS.filter((w) => !queued.has(w.w))));
+  }
+  return queue.slice(0, SESSION);
 }
 
 function reschedule(word, wasRight) {

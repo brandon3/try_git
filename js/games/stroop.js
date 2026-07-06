@@ -86,12 +86,16 @@ export default {
     function end() {
       const accuracy = correct / TRIALS;
       const sorted = reactionTimes.toSorted((a, b) => a - b);
-      const median = sorted[Math.floor(sorted.length / 2)] ?? deadline;
-      const speed = clamp((1400 - median) / 800, 0, 1);
+      const median = sorted[Math.floor(sorted.length / 2)];
+      // No correct answers means no speed to credit — don't let the fallback inflate the score.
+      const speed = sorted.length ? clamp((1400 - median) / 800, 0, 1) : 0;
       finish({
         score: Math.round(accuracy * 70 + speed * 30),
-        notes: [`${correct}/${TRIALS} correct · median ${Math.round(median)} ms`],
-        levelDelta: accuracy >= 0.92 && median < 950 ? 1 : accuracy < 0.65 ? -1 : 0,
+        notes: [
+          `${correct}/${TRIALS} correct` +
+            (sorted.length ? ` · median ${Math.round(median)} ms` : ''),
+        ],
+        levelDelta: accuracy >= 0.92 && sorted.length && median < 950 ? 1 : accuracy < 0.65 ? -1 : 0,
       });
     }
 

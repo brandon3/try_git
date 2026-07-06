@@ -121,6 +121,7 @@ kbd {
   padding: clamp(18px, 4vw, 34px) clamp(16px, 4vw, 30px) 60px;
   animation: rise 0.4s var(--ease) both;
 }
+.view:focus { outline: none; } /* programmatic focus target, not an interactive control */
 @keyframes rise { from { opacity: 0; transform: translateY(8px); } }
 
 .top {

@@ -16,6 +16,11 @@ const SPOTS = { 1: [[50, 50]], 2: [[34, 34], [66, 66]], 3: [[28, 28], [50, 50], 
 
 let gradientId = 0;
 
+const SIZE_WORD = { 0.55: 'small', 0.75: 'medium', 0.95: 'large' };
+/** A spoken description of a cell, for the screen-reader name of option buttons. */
+const describe = ({ shape, count, fill, size }) =>
+  `${count} ${SIZE_WORD[size]} ${fill === 'outline' ? 'outlined' : fill} ${shape}${count > 1 ? 's' : ''}`;
+
 function shapeMarkup(shape, x, y, r, paint) {
   const p = `${paint} stroke="currentColor" stroke-width="2.5" stroke-linejoin="round"`;
   switch (shape) {
@@ -126,9 +131,10 @@ export default {
       const { grid, answer, options } = generatePuzzle(level);
       let locked = false;
 
-      const optionButtons = options.map((option) =>
+      const optionButtons = options.map((option, i) =>
         el('button', {
           class: 'mx-option',
+          'aria-label': `Option ${i + 1}: ${describe(option)}`,
           onclick: (e) => {
             if (locked) return;
             locked = true;

@@ -17,6 +17,10 @@ function show(view) {
   activeTeardown = view.__teardown ?? null;
   app.replaceChildren(view);
   window.scrollTo(0, 0);
+  // Move focus onto the incoming view so keyboard and screen-reader users don't
+  // get dropped back to <body> (and the new screen is announced) on every transition.
+  view.tabIndex = -1;
+  view.focus({ preventScroll: true });
 }
 
 // --- theme ------------------------------------------------------------
