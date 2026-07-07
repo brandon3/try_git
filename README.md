@@ -31,6 +31,36 @@ If a source is unreachable the affected section shows an error state — nothing
 ever fabricated. Append `?demo=1` to preview the layout with clearly-labeled
 synthetic data (works offline).
 
+## Alerts
+
+Alerts fire on **transitions only** (VIX zone change, VIX/VIX3M term-structure
+flip, BTC cycle-phase boundary) — never on levels, so a daily/weekly check
+cadence doesn't get spammed.
+
+- **Dashboard**: the Alerts panel flags anything that changed since your last
+  visit (state is kept in localStorage) and can fire browser notifications once
+  you enable them.
+- **Email**: `.github/workflows/daily-signals.yml` runs `scripts/daily.mjs`
+  every weekday after the US close. On any transition it opens a GitHub issue —
+  GitHub emails you if you **watch the repo**. Every Monday it opens a digest
+  issue regardless. For direct email, set `MAIL_USERNAME`, `MAIL_PASSWORD`
+  (e.g. a Gmail app password) and `MAIL_TO` repo secrets.
+- Scheduled workflows only run from the **default branch** — merge this branch
+  to activate; use *Run workflow* to test manually.
+
+## Stock scanner
+
+The same daily job fetches prices for a curated 64-name universe (Stooq, free,
+no key) bucketed to match the four VIX zones, ranks each bucket by price-based
+factors — relative strength vs SPY over 3/6 months (60%), trend vs the 200-day
+average (25%), distance from the 52-week high (15%) — and commits the results
+to `data/scanner.{json,js}`. The dashboard reads that file and opens the bucket
+matching the current VIX zone, plus a "washed-out rebound candidates" list when
+the VIX is elevated. Run `node scripts/daily.mjs` locally to generate data
+without waiting for the Action (`--demo` for synthetic output).
+
+To change the universe, edit `UNIVERSE` in `scripts/daily.mjs`.
+
 ## Notes
 
 Zone thresholds follow the AskLivermore VIX cheat sheet. Cycle-phase windows are

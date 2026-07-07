@@ -167,6 +167,30 @@
   details.datatable table { border-collapse: collapse; margin-top: 8px; }
   details.datatable td, details.datatable th { border: 1px solid var(--grid); padding: 3px 8px; font-variant-numeric: tabular-nums; }
 
+  /* alerts */
+  .alertlist { display: flex; flex-direction: column; gap: 8px; }
+  .alert-row { display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--border); border-radius: 10px; padding: 9px 12px; background: var(--tile); font-size: 13px; }
+  .alert-row .st { width: 9px; height: 9px; border-radius: 50%; margin-top: 5px; flex: none; background: var(--muted); }
+  .alert-row.ok .st { background: var(--good); }
+  .alert-row.trig .st { background: var(--critical); }
+  .alert-row.info .st { background: var(--series-1); }
+  .alert-row .chg { color: var(--crit-text); font-weight: 700; }
+  .alert-actions { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; align-items: baseline; }
+  .alert-actions .note { color: var(--muted); font-size: 12px; max-width: 72ch; }
+
+  /* scanner */
+  .scan-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  .scan-table th { text-align: left; color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .03em; border-bottom: 1px solid var(--grid); padding: 6px 8px; }
+  .scan-table td { padding: 7px 8px; border-bottom: 1px solid var(--grid); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .scan-table td.name { color: var(--ink-2); white-space: normal; }
+  .scan-table tr:last-child td { border-bottom: none; }
+  .scorebar { display: flex; align-items: center; gap: 8px; min-width: 110px; }
+  .scorebar .track { display: block; flex: 1; height: 6px; border-radius: 3px; background: var(--chip); overflow: hidden; }
+  .scorebar .fill { display: block; height: 100%; border-radius: 3px; background: var(--series-1); }
+  .pos { color: var(--good-text); } .neg { color: var(--crit-text); }
+  .scan-meta { color: var(--muted); font-size: 12px; margin-top: 10px; }
+  .scan-sub { font-size: 13px; font-weight: 600; margin: 16px 0 6px; }
+
   footer { margin-top: 36px; color: var(--muted); font-size: 12px; }
   footer a { color: var(--ink-2); }
   .err-inline { color: var(--crit-text); font-size: 13px; padding: 24px 0; text-align: center; }
@@ -204,6 +228,18 @@
   <section id="sec-signal">
     <h2>Signal now</h2>
     <p class="desc" id="signal-text">Loading…</p>
+  </section>
+
+  <section id="sec-alerts">
+    <h2>Alerts</h2>
+    <p class="desc">Alerts fire on <b>transitions</b>, not levels — a zone change, a term-structure flip, a cycle-phase boundary. The dashboard flags anything that changed since your last visit; the daily GitHub Action emails the same transitions.</p>
+    <figure>
+      <div class="alertlist" id="alert-list"></div>
+      <div class="alert-actions">
+        <button class="refresh" id="btn-notif">Enable browser notifications</button>
+        <span class="note"><b>Email:</b> the daily GitHub Action opens an issue on any transition, plus a Monday digest — GitHub emails you automatically if you watch this repo. For direct email instead, set <code>MAIL_USERNAME</code>/<code>MAIL_PASSWORD</code>/<code>MAIL_TO</code> repo secrets.</span>
+      </div>
+    </figure>
   </section>
 
   <section id="sec-vix">
@@ -251,6 +287,16 @@
       </figure>
   </section>
 
+  <section id="sec-scanner">
+    <h2>Stock scanner — candidates for the next 12–18 months</h2>
+    <p class="desc">A curated universe of 64 liquid names, bucketed to match the four VIX zones, ranked daily by price-based factors: relative strength vs SPY over 3 and 6 months, trend vs the 200-day average, and distance from the 52-week high. The tab matching the current zone opens by default — those are the names the playbook says to be buying <i>in this regime</i>.</p>
+    <figure>
+      <div class="presets" id="scan-tabs"></div>
+      <div id="scan-body"></div>
+      <div class="scan-meta" id="scan-meta"></div>
+    </figure>
+  </section>
+
   <section id="sec-playbook">
     <h2>Positioning playbook</h2>
     <p class="desc">Cross the two clocks. Rows are the VIX zone (equity risk appetite), columns are the BTC cycle phase (crypto risk appetite). The highlighted cell is where both signals currently sit.</p>
@@ -260,11 +306,13 @@
   </section>
 
   <footer>
-    <p><b>Sources:</b> VIX — CBOE (<code>cdn.cboe.com</code> daily history + delayed quote). Bitcoin — CryptoCompare full daily history, with Coinbase Exchange and CoinGecko as fallbacks. All data is fetched by your browser at load time; nothing is stored.</p>
+    <p><b>Sources:</b> VIX &amp; VIX3M — CBOE (<code>cdn.cboe.com</code> daily history + delayed quote). Bitcoin — CryptoCompare full daily history, with Coinbase Exchange and CoinGecko as fallbacks. Scanner — daily equity prices from Stooq, computed server-side by the GitHub Action (<code>scripts/daily.mjs</code>) and committed to <code>data/</code>. Chart data is fetched by your browser at load time; only your alert-state snapshot is stored (locally).</p>
     <p>Zones follow the AskLivermore VIX cheat sheet (buy 35+, scale in 25–35, hold 15–25, sell &lt;15). Cycle-phase windows are derived from the 2012/2016/2020 cycles (tops at days 371/526/549 after halving; bottoms at days 778/891/925). This is a study tool, not financial advice.</p>
   </footer>
 </div>
 
+<script src="data/scanner.js" onerror="void 0"></script>
+<script src="data/signals.js" onerror="void 0"></script>
 <script>
 "use strict";
 /* ============================== utilities ============================== */
@@ -316,6 +364,20 @@ const PLAYBOOK = {
   sell:  ["Trim equities; hold BTC",   "Trim both — froth in both clocks",      "Trim equities; DCA BTC slowly",  "Rotate equity trims into BTC","Trim equities; hold BTC"],
 };
 
+const BUCKET_LABELS = {
+  buy:   "BUY bucket — high-beta growth",
+  scale: "SCALE IN bucket — quality cyclicals",
+  hold:  "HOLD bucket — compounders & defensives",
+  sell:  "SELL bucket — risk-off rotation",
+};
+// demo-mode universe (live scanner data carries its own names via data/scanner.js)
+const SCAN_UNIVERSE = {
+  buy: [["NVDA","Nvidia"],["AMD","AMD"],["TSLA","Tesla"],["PLTR","Palantir"],["COIN","Coinbase"],["MSTR","Strategy"],["SHOP","Shopify"],["NET","Cloudflare"],["DDOG","Datadog"],["CRWD","CrowdStrike"],["SNOW","Snowflake"],["RBLX","Roblox"],["SOFI","SoFi"],["DKNG","DraftKings"],["IWM","Russell 2000 ETF"],["ARKK","ARK Innovation ETF"]],
+  scale: [["MSFT","Microsoft"],["AAPL","Apple"],["GOOGL","Alphabet"],["AMZN","Amazon"],["META","Meta"],["AVGO","Broadcom"],["ORCL","Oracle"],["JPM","JPMorgan"],["GS","Goldman Sachs"],["MS","Morgan Stanley"],["V","Visa"],["MA","Mastercard"],["CAT","Caterpillar"],["DE","Deere"],["HON","Honeywell"],["UNP","Union Pacific"]],
+  hold: [["COST","Costco"],["WMT","Walmart"],["HD","Home Depot"],["MCD","McDonald's"],["JNJ","Johnson & Johnson"],["ABBV","AbbVie"],["LLY","Eli Lilly"],["UNH","UnitedHealth"],["PG","Procter & Gamble"],["KO","Coca-Cola"],["PEP","PepsiCo"],["TXN","Texas Instruments"],["ADP","ADP"],["LOW","Lowe's"],["SCHD","Schwab US Dividend ETF"],["BRK-B","Berkshire Hathaway B"]],
+  sell: [["XLU","Utilities SPDR"],["XLP","Staples SPDR"],["XLV","Health Care SPDR"],["TLT","20+Y Treasury ETF"],["IEF","7-10Y Treasury ETF"],["GLD","Gold ETF"],["USMV","Min-Vol ETF"],["NEE","NextEra"],["DUK","Duke Energy"],["SO","Southern Co"],["ED","Consolidated Edison"],["MRK","Merck"],["PFE","Pfizer"],["AMGN","Amgen"],["CL","Colgate"],["KMB","Kimberly-Clark"]],
+};
+
 /* ============================== state ============================== */
 const state = {
   demo: new URLSearchParams(location.search).has("demo"),
@@ -323,7 +385,9 @@ const state = {
   btc: null,        // [{t: Date, c: number}]
   btcDegraded: false,
   vixLive: null,    // intraday delayed quote (number) or null
+  vix3m: null,      // latest VIX3M close or null
   btc24h: null,     // 24h % change or null
+  scanner: null,    // scanner data (from data/scanner.js, fetch, or demo)
   errors: [],
 };
 
@@ -360,6 +424,17 @@ async function loadVix() {
   }
   if (out.length < 1000) throw new Error("VIX history unexpectedly short (" + out.length + " rows)");
   return out;
+}
+
+async function loadVix3m() {
+  const csv = await fetchText("https://cdn.cboe.com/api/global/us_indices/daily_prices/VIX3M_History.csv");
+  const rows = csv.trim().split(/\r?\n/);
+  for (let i = rows.length - 1; i > 0; i--) {
+    const p = rows[i].split(",");
+    const c = parseFloat(p[4]);
+    if (isFinite(c) && c > 0) return c;
+  }
+  return null;
 }
 
 async function loadVixQuote() {
@@ -766,6 +841,141 @@ function renderSignal(k) {
   $("signal-text").innerHTML = `${zoneTxt}<br><br>${phaseTxt}<br><br>Combined stance: <b>${combined}</b>.`;
 }
 
+/* ---------- alerts panel + browser notifications ---------- */
+function renderAlerts(k) {
+  const list = $("alert-list");
+  const lastVisit = JSON.parse(localStorage.getItem("scd-last") || "null");
+  const changes = [];
+  const rows = [];
+
+  const zoneChanged = lastVisit && lastVisit.zone && lastVisit.zone !== k.zone.key;
+  if (zoneChanged) changes.push(`VIX zone: ${lastVisit.zone.toUpperCase()} → ${k.zone.name}`);
+  rows.push({
+    cls: zoneChanged ? "trig" : "ok",
+    html: `<b>VIX zone — ${k.zone.name}</b> (VIX ${fmt.n1(k.vNow)}, ${Math.round(k.pct)}th percentile). ` +
+      (zoneChanged ? `<span class="chg">Changed since your last visit (was ${VIX_ZONES.find(z=>z.key===lastVisit.zone)?.name || lastVisit.zone}).</span>`
+                   : lastVisit ? "Unchanged since your last visit." : "First visit — future changes will be flagged here."),
+  });
+
+  if (state.vix3m) {
+    const ratio = k.vNow / state.vix3m;
+    const term = ratio >= 1 ? "backwardation" : ratio >= 0.95 ? "flat" : "contango";
+    const termChanged = lastVisit && lastVisit.term && lastVisit.term !== term && (term === "backwardation" || lastVisit.term === "backwardation");
+    if (termChanged) changes.push("VIX term structure flipped to " + term);
+    rows.push({
+      cls: term === "backwardation" ? "trig" : term === "flat" ? "info" : "ok",
+      html: `<b>VIX term structure — ${term}</b> (VIX ${fmt.n1(k.vNow)} / VIX3M ${fmt.n1(state.vix3m)} = ${ratio.toFixed(2)}). ` +
+        (term === "backwardation" ? "Front-month fear exceeds 3-month — a stress event is live; this is when the 35+ zone tends to get hit."
+         : term === "flat" ? "Curve is flattening — watch for a flip to backwardation."
+         : "Normal calm-market curve."),
+      term,
+    });
+    state._term = term;
+  } else {
+    rows.push({ cls: "info", html: "<b>VIX term structure</b> — VIX3M unavailable this session." });
+  }
+
+  const phaseChanged = lastVisit && lastVisit.phase && lastVisit.phase !== k.phase.key;
+  if (phaseChanged) changes.push("BTC cycle entered " + k.phase.name);
+  const halving = parseDateUTC(HALVINGS[HALVINGS.length - 1].date);
+  const nextPhase = PHASES[PHASES.findIndex(p => p.key === k.phase.key) + 1];
+  const nextTxt = nextPhase
+    ? `Next: <b>${nextPhase.name}</b> begins ~${new Date(halving.getTime() + nextPhase.from * DAY).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })} (day ${nextPhase.from}).`
+    : `Next: est. 2028 halving resets the clock.`;
+  rows.push({
+    cls: phaseChanged ? "trig" : "ok",
+    html: `<b>BTC cycle — ${k.phase.name}</b> (day ${k.days}). ` +
+      (phaseChanged ? `<span class="chg">Phase changed since your last visit.</span> ` : "") + nextTxt,
+  });
+
+  const mon = new Date().toLocaleDateString("en-US", { month: "long" });
+  rows.push({ cls: "info", html: `<b>Seasonality</b> — it is ${mon}; check the seasonality panels below for how the current month has historically leaned for volatility and BTC.` });
+
+  list.innerHTML = rows.map(r => `<div class="alert-row ${r.cls}"><span class="st"></span><div>${r.html}</div></div>`).join("");
+
+  // browser notification for changes since last visit
+  if (changes.length && typeof Notification !== "undefined" && Notification.permission === "granted") {
+    try { new Notification("Signals dashboard — " + changes.length + " change(s)", { body: changes.join("\n") }); } catch (e) {}
+  }
+  localStorage.setItem("scd-last", JSON.stringify({ zone: k.zone.key, phase: k.phase.key, term: state._term || null, date: fmt.date(new Date()) }));
+}
+
+function initNotifButton() {
+  const btn = $("btn-notif");
+  if (typeof Notification === "undefined") { btn.disabled = true; btn.textContent = "Browser notifications unsupported here"; return; }
+  const sync = () => {
+    if (Notification.permission === "granted") { btn.disabled = true; btn.textContent = "Browser notifications enabled ✓"; }
+    else if (Notification.permission === "denied") { btn.disabled = true; btn.textContent = "Notifications blocked in browser settings"; }
+  };
+  btn.addEventListener("click", async () => { await Notification.requestPermission(); sync(); });
+  sync();
+}
+
+/* ---------- scanner ---------- */
+let scanTab = null;
+function demoScanner() {
+  const rnd = mulberry32(7);
+  const buckets = {};
+  for (const key of Object.keys(SCAN_UNIVERSE)) {
+    buckets[key] = SCAN_UNIVERSE[key].map(([sym, name]) => ({
+      sym, name,
+      rs3m: Math.round((rnd() * 30 - 12) * 10) / 10,
+      rs6m: Math.round((rnd() * 50 - 20) * 10) / 10,
+      trend: Math.round((rnd() * 40 - 15) * 10) / 10,
+      offHigh: -Math.round(rnd() * 45 * 10) / 10,
+    }));
+    const rank = (key2) => { const vals = buckets[key].map(e => e[key2]).sort((a, b) => a - b); return (v) => vals.filter(x => x <= v).length / vals.length; };
+    const r3 = rank("rs3m"), r6 = rank("rs6m"), rt = rank("trend"), rh = rank("offHigh");
+    for (const e of buckets[key]) e.score = Math.round(100 * (0.25 * r3(e.rs3m) + 0.35 * r6(e.rs6m) + 0.25 * rt(e.trend) + 0.15 * rh(e.offHigh)));
+    buckets[key].sort((a, b) => b.score - a.score);
+  }
+  return { asOf: fmt.date(new Date()), demo: true, benchmark: "SPY", buckets, notes: "" };
+}
+const sgn = (v) => `<span class="${v >= 0 ? "pos" : "neg"}">${v > 0 ? "+" : ""}${v.toFixed(1)}%</span>`;
+
+function renderScanner(k) {
+  const data = state.scanner;
+  const tabs = $("scan-tabs"), body = $("scan-body"), meta = $("scan-meta");
+  if (!data || !data.buckets) {
+    tabs.innerHTML = "";
+    meta.textContent = "";
+    body.innerHTML = '<div class="err-inline">No scanner data yet. It is generated by the daily GitHub Action (which runs from the default branch — merge this branch and enable Actions), or run <code>node scripts/daily.mjs</code> locally and reload.</div>';
+    return;
+  }
+  if (!scanTab) scanTab = k.zone.key;
+  tabs.innerHTML = "";
+  for (const key of Object.keys(BUCKET_LABELS)) {
+    const b = document.createElement("button");
+    b.textContent = BUCKET_LABELS[key] + (key === k.zone.key ? " · current zone" : "");
+    b.className = key === scanTab ? "active" : "";
+    b.onclick = () => { scanTab = key; renderScanner(k); };
+    tabs.appendChild(b);
+  }
+  const rows = (data.buckets[scanTab] || []).slice(0, 12);
+  const table = (entries, startRank) => `
+    <table class="scan-table">
+      <thead><tr><th>#</th><th>Ticker</th><th>Name</th><th>Score</th><th>RS 3m</th><th>RS 6m</th><th>vs 200d</th><th>Off 52w high</th></tr></thead>
+      <tbody>${entries.map((e, i) => `
+        <tr>
+          <td>${startRank + i}</td><td><b>${e.sym}</b></td><td class="name">${e.name}</td>
+          <td><span class="scorebar"><span class="track"><span class="fill" style="width:${e.score}%"></span></span><b>${e.score}</b></span></td>
+          <td>${sgn(e.rs3m)}</td><td>${sgn(e.rs6m)}</td><td>${sgn(e.trend)}</td><td>${sgn(e.offHigh)}</td>
+        </tr>`).join("")}
+      </tbody>
+    </table>`;
+  let html = `<div class="tablewrap">${table(rows, 1)}</div>`;
+  if (k.zone.key === "buy" || k.zone.key === "scale") {
+    const washed = [...(data.buckets.buy || [])].sort((a, b) => a.offHigh - b.offHigh).slice(0, 6);
+    html += `<div class="scan-sub">Washed-out rebound candidates (high-beta bucket, deepest off their 52-week highs — the VIX-spike shopping list)</div>
+      <div class="tablewrap">${table(washed, 1)}</div>`;
+  }
+  body.innerHTML = html;
+  meta.textContent =
+    (data.demo ? "DEMO scanner data · " : "") +
+    `As of ${data.asOf} · benchmark ${data.benchmark} · price-based factors only (no fundamentals) — a shortlist generator, not a verdict.` +
+    (data.notes ? " · " + data.notes : "");
+}
+
 const VIX_RANGES = [
   { key: "2018", label: "Since 2018 (cheat sheet)", from: () => parseDateUTC("2018-01-01") },
   { key: "5y",  label: "5Y",  from: (now) => new Date(now.getTime() - 5 * 365.25 * DAY) },
@@ -938,6 +1148,8 @@ function renderPlaybook(k) {
 function renderAll() {
   const k = renderKpis();
   renderSignal(k);
+  renderAlerts(k);
+  renderScanner(k);
   renderVixPresets();
   renderVixChart();
   renderSeasonality();
@@ -955,6 +1167,8 @@ async function boot() {
     const d = demoData();
     state.vix = d.vix; state.btc = d.btc;
     state.vixLive = null; state.btc24h = 1.7; state.btcDegraded = false;
+    state.vix3m = d.vix[d.vix.length - 1].c * 1.12;
+    state.scanner = demoScanner();
     setChip("chip-vix", "warn", "VIX: demo");
     setChip("chip-btc", "warn", "BTC: demo");
     renderAll();
@@ -962,7 +1176,12 @@ async function boot() {
   }
   setChip("chip-vix", "", "VIX: loading…");
   setChip("chip-btc", "", "BTC: loading…");
-  const [vixR, btcR, quoteR, spotR] = await Promise.allSettled([loadVix(), loadBtc(), loadVixQuote(), loadBtcSpot()]);
+  const [vixR, btcR, quoteR, spotR, v3mR, scanR] = await Promise.allSettled([
+    loadVix(), loadBtc(), loadVixQuote(), loadBtcSpot(), loadVix3m(),
+    (typeof window.SCANNER_DATA !== "undefined") ? Promise.resolve(window.SCANNER_DATA) : fetchJson("data/scanner.json"),
+  ]);
+  state.vix3m = v3mR.status === "fulfilled" ? v3mR.value : null;
+  state.scanner = (scanR.status === "fulfilled" && scanR.value && !scanR.value.demo) ? scanR.value : null;
   const errs = [];
   if (vixR.status === "fulfilled") {
     state.vix = vixR.value;
@@ -987,15 +1206,18 @@ async function boot() {
     b.classList.remove("hidden");
     b.innerHTML = "<b>Some data failed to load:</b> " + errs.join(" · ") +
       ". Check your connection / ad-blocker and hit Refresh. Add <code>?demo=1</code> to the URL to preview the layout with synthetic data.";
-    if (!state.vix && !state.btc) return;
     // render what we can: fabricate nothing — hide sections that lack data
     if (!state.vix) { $("sec-vix").style.display = "none"; }
     if (!state.btc) { $("sec-cycle").style.display = "none"; }
-    if (!state.vix || !state.btc) { $("sec-season").style.display = "none"; $("sec-signal").style.display = "none"; $("sec-playbook").style.display = "none"; $("kpis").style.display = "none"; return; }
+    if (!state.vix || !state.btc) {
+      for (const id of ["sec-season", "sec-signal", "sec-playbook", "sec-alerts", "sec-scanner", "kpis"]) $(id).style.display = "none";
+      return;
+    }
   }
   renderAll();
 }
 $("btn-refresh").addEventListener("click", boot);
+initNotifButton();
 boot();
 </script>
 </body>
