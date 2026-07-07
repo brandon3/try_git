@@ -56,7 +56,7 @@ export default {
     let trialTimer, flashTimer;
 
     const progress = meter();
-    const cells = Array.from({ length: 9 }, () => el('button', { class: 'nb-cell', tabindex: -1, 'aria-hidden': true }));
+    const cells = Array.from({ length: 9 }, () => el('div', { class: 'nb-cell', 'aria-hidden': true }));
     const grid = el('div', { class: 'nb-grid' }, cells);
     const letterBox = el('div', { class: 'nb-letter' }, '·');
     const buttons = {

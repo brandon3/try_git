@@ -116,7 +116,7 @@ export default {
     let timer;
 
     const dots = Array.from({ length: PUZZLES }, () => el('span', { class: 'dot' }));
-    stage.append(el('div', { class: 'stage-head' }, el('div', { class: 'dots' }, dots)));
+    stage.append(el('div', { class: 'stage-head' }, el('div', { class: 'dots', 'aria-hidden': true }, dots)));
     const board = el('div', { class: 'mx-board' });
     stage.append(board);
 

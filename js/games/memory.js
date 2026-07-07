@@ -32,7 +32,7 @@ export default {
     let round = 0;
     let showTimer, restTimer;
 
-    const head = el('div', { class: 'stage-head' });
+    const head = el('div', { class: 'stage-head', role: 'status' });
     const board = el('div', { class: 'me-board' });
     stage.append(head, board);
 
@@ -50,6 +50,7 @@ export default {
       const tiles = Array.from({ length: side * side }, (_, i) =>
         el('button', {
           class: 'me-tile',
+          'aria-label': `Tile ${i + 1}`,
           onclick: () => {
             if (!accepting) return;
             const tile = tiles[i];
@@ -87,7 +88,7 @@ export default {
       finish({
         score: Math.min(100, Math.round((peak / (level + 4)) * 100)),
         notes: [`Longest pattern held: ${peak || '—'} tiles`],
-        levelDelta: peak >= level + 2 ? 1 : peak > 0 && peak <= level - 2 ? -1 : 0,
+        levelDelta: peak >= level + 2 ? 1 : peak <= level - 2 ? -1 : 0,
       });
     }
 

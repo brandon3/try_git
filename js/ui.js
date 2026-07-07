@@ -37,7 +37,7 @@ export const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
     Mirrors ring(), and replaces the meter/meter-fill construct the timed games share. */
 export function meter() {
   const fill = el('div', { class: 'meter-fill' });
-  const node = el('div', { class: 'meter' }, fill);
+  const node = el('div', { class: 'meter', 'aria-hidden': true }, fill);
   return { node, set: (f) => { fill.style.width = `${clamp(f, 0, 1) * 100}%`; } };
 }
 
@@ -115,19 +115,23 @@ export function scoreRing(score) {
 
 /** 3·2·1 overlay before timed drills. Returns a cancel function. */
 export function countdown(stage, onDone) {
-  const digit = el('span', { class: 'count-digit' }, '3');
+  const digit = el('span', { class: 'count-digit' });
   const veil = el('div', { class: 'count-veil' }, digit);
+  const show = (n) => {
+    digit.textContent = n;
+    digit.animate([{ opacity: 0.2, transform: 'scale(1.3)' }, { opacity: 1, transform: 'scale(1)' }],
+      { duration: 240, easing: 'ease-out' });
+  };
   stage.append(veil);
   let n = 3;
+  show(n);
   const timer = setInterval(() => {
     if (--n === 0) {
       clearInterval(timer);
       veil.remove();
       onDone();
     } else {
-      digit.textContent = n;
-      digit.animate([{ opacity: 0.2, transform: 'scale(1.3)' }, { opacity: 1, transform: 'scale(1)' }],
-        { duration: 240, easing: 'ease-out' });
+      show(n);
     }
   }, 700);
   return () => { clearInterval(timer); veil.remove(); };

@@ -57,7 +57,7 @@ export default {
 
     const dots = queue.map(() => el('span', { class: 'dot' }));
     const board = el('div', { class: 'vb-board' });
-    stage.append(el('div', { class: 'stage-head' }, el('div', { class: 'dots' }, dots)), board);
+    stage.append(el('div', { class: 'stage-head' }, el('div', { class: 'dots', 'aria-hidden': true }, dots)), board);
 
     function next() {
       if (index === queue.length) {

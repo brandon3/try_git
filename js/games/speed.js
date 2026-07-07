@@ -90,6 +90,7 @@ export default {
 
     function end() {
       clearInterval(ticker);
+      current = null; // stop answer() from reacting to keypresses after time is up
       const net = Math.max(0, correct - errors);
       const attempted = correct + errors;
       const accuracy = attempted ? correct / attempted : 0;
