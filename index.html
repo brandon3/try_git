@@ -1,0 +1,1002 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Seasonal &amp; Cyclical Dashboard — VIX zones × BTC 4-year cycle</title>
+<style>
+  :root {
+    --surface-1: #fcfcfb;      /* chart surface */
+    --page:      #f9f9f7;
+    --ink:       #0b0b0b;
+    --ink-2:     #52514e;
+    --muted:     #898781;
+    --grid:      #e1e0d9;
+    --baseline:  #c3c2b7;
+    --border:    rgba(11,11,11,0.10);
+    --series-1:  #2a78d6;      /* blue — emphasis / current cycle */
+    --div-pos:   #2a78d6;      /* diverging positive pole */
+    --div-neg:   #e34948;      /* diverging negative pole */
+    --good:      #0ca30c;
+    --warning:   #fab219;
+    --serious:   #ec835a;
+    --critical:  #d03b3b;
+    --good-text: #006300;
+    --crit-text: #b02a2a;
+    --ctx-1:     #b5b3ab;      /* context cycles (de-emphasis grays) */
+    --ctx-2:     #898781;
+    --ctx-3:     #5f5e59;
+    --wash-buy:   rgba(12,163,12,0.10);
+    --wash-scale: rgba(12,163,12,0.05);
+    --wash-hold:  rgba(11,11,11,0.02);
+    --wash-sell:  rgba(208,59,59,0.07);
+    --tile:      #ffffff;
+    --chip:      rgba(11,11,11,0.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --surface-1: #1a1a19;
+      --page:      #0d0d0d;
+      --ink:       #ffffff;
+      --ink-2:     #c3c2b7;
+      --muted:     #898781;
+      --grid:      #2c2c2a;
+      --baseline:  #383835;
+      --border:    rgba(255,255,255,0.10);
+      --series-1:  #3987e5;
+      --div-pos:   #3987e5;
+      --div-neg:   #e66767;
+      --good-text: #0ca30c;
+      --crit-text: #e66767;
+      --ctx-1:     #5f5e59;
+      --ctx-2:     #898781;
+      --ctx-3:     #b5b3ab;
+      --wash-buy:   rgba(12,163,12,0.14);
+      --wash-scale: rgba(12,163,12,0.07);
+      --wash-hold:  rgba(255,255,255,0.02);
+      --wash-sell:  rgba(208,59,59,0.10);
+      --tile:      #202020;
+      --chip:      rgba(255,255,255,0.07);
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--page); color: var(--ink);
+    font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 20px 20px 48px; }
+  header h1 { font-size: 20px; margin: 0 0 2px; }
+  header .sub { color: var(--ink-2); font-size: 13px; margin: 0; }
+  .toprow { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .statusbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--chip); border: 1px solid var(--border);
+    border-radius: 999px; padding: 3px 10px; font-size: 12px; color: var(--ink-2);
+  }
+  .chip .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .chip.ok .dot { background: var(--good); }
+  .chip.err .dot { background: var(--critical); }
+  .chip.warn .dot { background: var(--warning); }
+  button.refresh {
+    background: var(--tile); color: var(--ink); border: 1px solid var(--border);
+    border-radius: 8px; padding: 5px 12px; font: inherit; font-size: 12.5px; cursor: pointer;
+  }
+  button.refresh:hover { border-color: var(--muted); }
+  .banner {
+    margin: 12px 0 0; padding: 8px 12px; border-radius: 8px; font-size: 13px;
+    border: 1px solid var(--border);
+  }
+  .banner.demo { background: rgba(250,178,25,0.12); }
+  .banner.error { background: rgba(208,59,59,0.10); }
+  .banner.hidden { display: none; }
+
+  /* KPI row */
+  .kpis { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin-top: 16px; }
+  @media (max-width: 980px) { .kpis { grid-template-columns: repeat(3, 1fr); } }
+  @media (max-width: 620px) { .kpis { grid-template-columns: repeat(2, 1fr); } }
+  .tile {
+    background: var(--tile); border: 1px solid var(--border); border-radius: 12px;
+    padding: 12px 14px; min-height: 92px; display: flex; flex-direction: column; gap: 2px;
+  }
+  .tile .k { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .tile .v { font-size: 26px; font-weight: 650; line-height: 1.15; }
+  .tile .d { font-size: 12.5px; color: var(--ink-2); }
+  .tile .d .up { color: var(--good-text); }
+  .tile .d .down { color: var(--crit-text); }
+  .zonechip { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; }
+  .zonechip .dot { width: 9px; height: 9px; border-radius: 3px; }
+
+  /* Sections + figures */
+  section { margin-top: 28px; }
+  section > h2 { font-size: 16px; margin: 0 0 2px; }
+  section > .desc { color: var(--ink-2); font-size: 13px; margin: 0 0 12px; max-width: 78ch; }
+  figure {
+    margin: 0; background: var(--surface-1); border: 1px solid var(--border);
+    border-radius: 12px; padding: 14px 16px 10px;
+  }
+  figure figcaption { font-size: 13px; font-weight: 600; margin-bottom: 2px; }
+  figure .figsub { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+  .figgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 860px) { .figgrid { grid-template-columns: 1fr; } }
+  .chartbox { position: relative; }
+  .chartbox svg { display: block; width: 100%; height: auto; }
+  .presets { display: flex; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
+  .presets button {
+    background: transparent; border: 1px solid var(--border); color: var(--ink-2);
+    border-radius: 999px; padding: 2px 10px; font: inherit; font-size: 12px; cursor: pointer;
+  }
+  .presets button.active { background: var(--chip); color: var(--ink); font-weight: 600; border-color: var(--muted); }
+
+  .tooltip {
+    position: absolute; pointer-events: none; z-index: 5;
+    background: var(--tile); border: 1px solid var(--border); border-radius: 8px;
+    padding: 6px 9px; font-size: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.12);
+    white-space: nowrap; display: none;
+  }
+  .tooltip .tt-title { color: var(--muted); font-size: 11px; margin-bottom: 2px; }
+  .tooltip .tt-row { display: flex; align-items: center; gap: 6px; }
+  .tooltip .tt-row .sw { width: 8px; height: 8px; border-radius: 2px; flex: none; }
+  .tooltip .tt-row b { font-variant-numeric: tabular-nums; }
+
+  /* zone legend under VIX chart */
+  .zonelegend { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 10px; }
+  @media (max-width: 860px) { .zonelegend { grid-template-columns: repeat(2, 1fr); } }
+  .zl {
+    border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; font-size: 12px;
+    background: var(--tile);
+  }
+  .zl.current { outline: 2px solid var(--series-1); outline-offset: -1px; }
+  .zl b { display: flex; align-items: center; gap: 6px; font-size: 12.5px; }
+  .zl b .dot { width: 9px; height: 9px; border-radius: 3px; flex: none; }
+  .zl .zr { color: var(--muted); }
+  .zl .zt { color: var(--ink-2); margin-top: 2px; }
+
+  /* playbook table */
+  .playbook { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12.5px; }
+  .playbook th, .playbook td { border: 1px solid var(--border); padding: 8px 10px; text-align: left; vertical-align: top; }
+  .playbook th { background: var(--chip); font-size: 12px; }
+  .playbook th .thsub { display: block; font-weight: 400; color: var(--muted); font-size: 11px; }
+  .playbook td.now { outline: 2px solid var(--series-1); outline-offset: -2px; font-weight: 600; }
+  .playbook tr th:first-child { white-space: nowrap; }
+  .tablewrap { overflow-x: auto; }
+
+  details.datatable { margin-top: 10px; font-size: 12.5px; }
+  details.datatable summary { cursor: pointer; color: var(--ink-2); }
+  details.datatable table { border-collapse: collapse; margin-top: 8px; }
+  details.datatable td, details.datatable th { border: 1px solid var(--grid); padding: 3px 8px; font-variant-numeric: tabular-nums; }
+
+  footer { margin-top: 36px; color: var(--muted); font-size: 12px; }
+  footer a { color: var(--ink-2); }
+  .err-inline { color: var(--crit-text); font-size: 13px; padding: 24px 0; text-align: center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="toprow">
+      <div>
+        <h1>Seasonal &amp; Cyclical Dashboard</h1>
+        <p class="sub">Multi-month positioning signals from two slow clocks: VIX mean-reversion zones and the Bitcoin 4-year halving cycle.</p>
+      </div>
+      <div class="statusbar">
+        <span class="chip" id="chip-vix"><span class="dot"></span>VIX (CBOE)</span>
+        <span class="chip" id="chip-btc"><span class="dot"></span>BTC history</span>
+        <span class="chip" id="chip-asof"><span class="dot"></span>loading…</span>
+        <button class="refresh" id="btn-refresh">Refresh</button>
+      </div>
+    </div>
+    <div class="banner demo hidden" id="banner-demo"><b>DEMO DATA</b> — this page was opened with <code>?demo=1</code>. All series below are synthetic, for layout preview only. Remove the parameter to load live market data.</div>
+    <div class="banner error hidden" id="banner-error"></div>
+  </header>
+
+  <div class="kpis" id="kpis">
+    <div class="tile"><div class="k">VIX (latest)</div><div class="v" id="kpi-vix">–</div><div class="d" id="kpi-vix-d"></div></div>
+    <div class="tile"><div class="k">VIX percentile since 1990</div><div class="v" id="kpi-vix-pct">–</div><div class="d" id="kpi-vix-pct-d"></div></div>
+    <div class="tile"><div class="k">VIX zone</div><div class="v" style="font-size:18px; margin-top:4px" id="kpi-zone">–</div><div class="d" id="kpi-zone-d"></div></div>
+    <div class="tile"><div class="k">Bitcoin</div><div class="v" id="kpi-btc">–</div><div class="d" id="kpi-btc-d"></div></div>
+    <div class="tile"><div class="k">Days since halving</div><div class="v" id="kpi-days">–</div><div class="d" id="kpi-days-d"></div></div>
+    <div class="tile"><div class="k">Cycle phase</div><div class="v" style="font-size:18px; margin-top:4px" id="kpi-phase">–</div><div class="d" id="kpi-phase-d"></div></div>
+  </div>
+
+  <section id="sec-signal">
+    <h2>Signal now</h2>
+    <p class="desc" id="signal-text">Loading…</p>
+  </section>
+
+  <section id="sec-vix">
+    <h2>VIX regime — fear is a buy signal, calm is a sell signal</h2>
+    <p class="desc">Since 1990 every major VIX spike above 35 marked a multi-month equity buying opportunity, and extended calm below 15 preceded drawdowns. The bands mirror the classic cheat-sheet zones.</p>
+    <figure>
+      <figcaption>CBOE Volatility Index with buy/sell zones</figcaption>
+      <div class="figsub" id="vix-figsub">Daily closes · zones: sell &lt;15 · hold 15–25 · scale in 25–35 · buy 35+</div>
+      <div class="presets" id="vix-presets"></div>
+      <div class="chartbox" id="chart-vix"></div>
+      <div class="zonelegend" id="zonelegend"></div>
+    </figure>
+  </section>
+
+  <section id="sec-season">
+    <h2>Seasonality — when the calendar leans your way</h2>
+    <p class="desc">Computed live from the full history loaded above: volatility tends to trough in summer and peak into September–October; Bitcoin's strongest months have historically clustered in Q4 and February, with September the weakest.</p>
+    <div class="figgrid">
+      <figure>
+        <figcaption>Average VIX by calendar month</figcaption>
+        <div class="figsub" id="seas-vix-sub">Mean of daily closes, full history · current month highlighted</div>
+        <div class="chartbox" id="chart-seas-vix"></div>
+      </figure>
+      <figure>
+        <figcaption>Bitcoin median monthly return</figcaption>
+        <div class="figsub" id="seas-btc-sub">Median month-over-month close return · current month highlighted</div>
+        <div class="chartbox" id="chart-seas-btc"></div>
+      </figure>
+    </div>
+  </section>
+
+  <section id="sec-cycle">
+    <h2>Bitcoin 4-year cycle — the slow clock</h2>
+    <p class="desc">Halvings (Nov 2012, Jul 2016, May 2020, Apr 2024) have anchored a repeating rhythm: a bull window peaking ~370–550 days after the halving, a bear window bottoming ~780–930 days after, then accumulation and a pre-halving run-up. The overlay indexes each cycle to 100 at its halving so the rhythm is comparable across eras.</p>
+      <figure>
+        <figcaption>Bitcoin price with halving markers</figcaption>
+        <div class="figsub">Daily close, log scale · dashed lines mark halvings</div>
+        <div class="chartbox" id="chart-btc"></div>
+      </figure>
+      <div style="height:12px"></div>
+      <figure>
+        <figcaption>Cycle overlay — price indexed to 100 at each halving</figcaption>
+        <div class="figsub">Log scale · current cycle in blue, past cycles in gray · vertical marker = today's position in the cycle</div>
+        <div class="chartbox" id="chart-overlay"></div>
+      </figure>
+  </section>
+
+  <section id="sec-playbook">
+    <h2>Positioning playbook</h2>
+    <p class="desc">Cross the two clocks. Rows are the VIX zone (equity risk appetite), columns are the BTC cycle phase (crypto risk appetite). The highlighted cell is where both signals currently sit.</p>
+    <div class="tablewrap">
+      <table class="playbook" id="playbook"></table>
+    </div>
+  </section>
+
+  <footer>
+    <p><b>Sources:</b> VIX — CBOE (<code>cdn.cboe.com</code> daily history + delayed quote). Bitcoin — CryptoCompare full daily history, with Coinbase Exchange and CoinGecko as fallbacks. All data is fetched by your browser at load time; nothing is stored.</p>
+    <p>Zones follow the AskLivermore VIX cheat sheet (buy 35+, scale in 25–35, hold 15–25, sell &lt;15). Cycle-phase windows are derived from the 2012/2016/2020 cycles (tops at days 371/526/549 after halving; bottoms at days 778/891/925). This is a study tool, not financial advice.</p>
+  </footer>
+</div>
+
+<script>
+"use strict";
+/* ============================== utilities ============================== */
+const $ = (id) => document.getElementById(id);
+const fmt = {
+  usd0: (v) => "$" + Math.round(v).toLocaleString("en-US"),
+  usd: (v) => v >= 1000 ? "$" + Math.round(v).toLocaleString("en-US")
+       : "$" + v.toLocaleString("en-US", { maximumFractionDigits: v >= 1 ? 2 : 4 }),
+  n1: (v) => v.toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 }),
+  pct1: (v) => (v > 0 ? "+" : "") + v.toLocaleString("en-US", { maximumFractionDigits: 1 }) + "%",
+  date: (d) => d.toISOString().slice(0, 10),
+};
+const DAY = 86400000;
+const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+function parseDateUTC(s) { return new Date(s + "T00:00:00Z"); }
+
+/* ============================== constants ============================== */
+const HALVINGS = [
+  { date: "2012-11-28", label: "2012" },
+  { date: "2016-07-09", label: "2016" },
+  { date: "2020-05-11", label: "2020" },
+  { date: "2024-04-20", label: "2024" },
+];
+const NEXT_HALVING_EST = "2028-04-14"; // estimate, ~210,000 blocks after the 2024 halving
+const CYCLE_LEN_DAYS = 1458;           // avg spacing of the last three halvings
+
+const VIX_ZONES = [
+  { key: "buy",   name: "BUY",      range: "VIX 35+",     min: 35, max: Infinity, action: "Buy aggressively",  targets: "High-beta tech, growth, small caps", color: "--good" },
+  { key: "scale", name: "SCALE IN", range: "VIX 25–35",   min: 25, max: 35,       action: "Start adding",      targets: "Quality tech, financials, cyclicals", color: "--good" },
+  { key: "hold",  name: "HOLD",     range: "VIX 15–25",   min: 15, max: 25,       action: "Stay positioned",   targets: "Tech + defensives, dividend growers", color: "--muted" },
+  { key: "sell",  name: "SELL",     range: "VIX below 15", min: 0,  max: 15,      action: "Reduce exposure",   targets: "Utilities, healthcare, staples, bonds", color: "--critical" },
+];
+function vixZone(v) { return VIX_ZONES.find(z => v >= z.min && v < z.max) || VIX_ZONES[3]; }
+
+const PHASES = [
+  { key: "ramp",  name: "Post-halving ramp", from: 0,    to: 210,  note: "supply shock digesting" },
+  { key: "bull",  name: "Bull window",       from: 210,  to: 550,  note: "prior tops: day 371 / 526 / 549" },
+  { key: "bear",  name: "Bear window",       from: 550,  to: 950,  note: "prior bottoms: day 778 / 891 / 925" },
+  { key: "accum", name: "Accumulation",      from: 950,  to: 1250, note: "basing after the bottom" },
+  { key: "runup", name: "Pre-halving run-up",from: 1250, to: 1600, note: "front-running the next halving" },
+];
+function cyclePhase(days) { return PHASES.find(p => days >= p.from && days < p.to) || PHASES[PHASES.length - 1]; }
+
+const PLAYBOOK = {
+  //            ramp                          bull                          bear                              accum                          runup
+  buy:   ["Add equities & BTC hard",   "Add equities; trim BTC into strength", "Back up the truck — both assets", "Max accumulation, both",      "Add both aggressively"],
+  scale: ["Scale into both",           "Scale equities; hold BTC",             "Scale into both in tranches",     "Scale in, DCA BTC weekly",    "Scale into both"],
+  hold:  ["Hold; let winners run",     "Hold equities; take partial BTC profit","Hold equities; DCA BTC",         "Hold; keep DCA-ing BTC",      "Hold; overweight BTC"],
+  sell:  ["Trim equities; hold BTC",   "Trim both — froth in both clocks",      "Trim equities; DCA BTC slowly",  "Rotate equity trims into BTC","Trim equities; hold BTC"],
+};
+
+/* ============================== state ============================== */
+const state = {
+  demo: new URLSearchParams(location.search).has("demo"),
+  vix: null,        // [{t: Date, c: number}]
+  btc: null,        // [{t: Date, c: number}]
+  btcDegraded: false,
+  vixLive: null,    // intraday delayed quote (number) or null
+  btc24h: null,     // 24h % change or null
+  errors: [],
+};
+
+/* ============================== data loading ============================== */
+function setChip(id, cls, text) {
+  const el = $(id);
+  el.className = "chip " + cls;
+  el.innerHTML = '<span class="dot"></span>' + text;
+}
+
+async function fetchText(url) {
+  const r = await fetch(url, { cache: "no-store" });
+  if (!r.ok) throw new Error(url + " → HTTP " + r.status);
+  return r.text();
+}
+async function fetchJson(url) {
+  const r = await fetch(url, { cache: "no-store" });
+  if (!r.ok) throw new Error(url + " → HTTP " + r.status);
+  return r.json();
+}
+
+async function loadVix() {
+  const csv = await fetchText("https://cdn.cboe.com/api/global/us_indices/daily_prices/VIX_History.csv");
+  const rows = csv.trim().split(/\r?\n/);
+  const out = [];
+  for (let i = 1; i < rows.length; i++) {
+    const p = rows[i].split(",");
+    if (p.length < 5) continue;
+    let d = p[0];
+    if (d.includes("/")) { const [m, dd, y] = d.split("/"); d = `${y}-${m.padStart(2,"0")}-${dd.padStart(2,"0")}`; }
+    const c = parseFloat(p[4]);
+    if (!isFinite(c)) continue;
+    out.push({ t: parseDateUTC(d), c });
+  }
+  if (out.length < 1000) throw new Error("VIX history unexpectedly short (" + out.length + " rows)");
+  return out;
+}
+
+async function loadVixQuote() {
+  try {
+    const j = await fetchJson("https://cdn.cboe.com/api/global/delayed_quotes/quotes/_VIX.json");
+    const v = j && j.data && (j.data.current_price ?? j.data.last_trade_price);
+    return isFinite(v) && v > 0 ? +v : null;
+  } catch (e) { return null; }
+}
+
+async function loadBtcCryptoCompare() {
+  const j = await fetchJson("https://min-api.cryptocompare.com/data/v2/histoday?fsym=BTC&tsym=USD&allData=true");
+  if (j.Response !== "Success") throw new Error("CryptoCompare: " + (j.Message || "bad response"));
+  const rows = j.Data.Data.filter(r => r.close > 0);
+  if (rows.length < 2000) throw new Error("CryptoCompare history too short");
+  return rows.map(r => ({ t: new Date(r.time * 1000), c: r.close }));
+}
+
+async function loadBtcCoinbase() {
+  // 300 daily candles per request; page back from now to 2015 (Coinbase listing).
+  const out = [];
+  let end = Date.now();
+  const start = parseDateUTC("2015-01-15").getTime();
+  for (let i = 0; i < 20 && end > start; i++) {
+    const from = Math.max(start, end - 300 * DAY);
+    const url = "https://api.exchange.coinbase.com/products/BTC-USD/candles?granularity=86400" +
+      "&start=" + new Date(from).toISOString() + "&end=" + new Date(end).toISOString();
+    const j = await fetchJson(url); // [ time, low, high, open, close, volume ] newest-first
+    for (const r of j) out.push({ t: new Date(r[0] * 1000), c: r[4] });
+    end = from;
+  }
+  out.sort((a, b) => a.t - b.t);
+  if (out.length < 1500) throw new Error("Coinbase history too short");
+  return out;
+}
+
+async function loadBtcCoinGecko365() {
+  const j = await fetchJson("https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=365&interval=daily");
+  return j.prices.map(p => ({ t: new Date(p[0]), c: p[1] }));
+}
+
+async function loadBtc() {
+  try { return { data: await loadBtcCryptoCompare(), degraded: false, src: "CryptoCompare" }; } catch (e1) {
+  try { return { data: await loadBtcCoinbase(), degraded: false, src: "Coinbase" }; } catch (e2) {
+  const data = await loadBtcCoinGecko365();
+  return { data, degraded: true, src: "CoinGecko (365d only)" };
+  }}
+}
+
+async function loadBtcSpot() {
+  try {
+    const j = await fetchJson("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true");
+    return { price: j.bitcoin.usd, chg: j.bitcoin.usd_24h_change };
+  } catch (e) {
+    try {
+      const j = await fetchJson("https://min-api.cryptocompare.com/data/pricemultifull?fsyms=BTC&tsyms=USD");
+      const r = j.RAW.BTC.USD;
+      return { price: r.PRICE, chg: r.CHANGEPCT24HOUR };
+    } catch (e2) { return null; }
+  }
+}
+
+/* ---------- demo data (synthetic, deterministic, labeled) ---------- */
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+function demoData() {
+  const today = new Date(); today.setUTCHours(0, 0, 0, 0);
+  const rnd = mulberry32(42);
+  // VIX: mean-reverting around 19 with occasional spikes, since 1990
+  const vix = [];
+  let v = 18;
+  for (let t = parseDateUTC("1990-01-02").getTime(); t <= today.getTime(); t += DAY) {
+    const d = new Date(t); const dow = d.getUTCDay();
+    if (dow === 0 || dow === 6) continue;
+    v += 0.03 * (19 - v) + (rnd() - 0.5) * 2.2;
+    if (rnd() < 0.004) v += 12 + rnd() * 25;
+    v = Math.max(9, Math.min(85, v));
+    vix.push({ t: d, c: +v.toFixed(2) });
+  }
+  // BTC: log growth + 4y cycle sine + noise, since 2010-07
+  const btc = [];
+  const t0 = parseDateUTC("2010-07-18").getTime();
+  for (let t = t0; t <= today.getTime(); t += DAY) {
+    const yrs = (t - t0) / (365.25 * DAY);
+    const logp = -2.3 + 1.35 * yrs - 0.055 * yrs * yrs
+      + 0.85 * Math.sin(2 * Math.PI * (yrs - 0.9) / 4)
+      + (rnd() - 0.5) * 0.22;
+    btc.push({ t: new Date(t), c: +Math.pow(10, logp).toFixed(6) });
+  }
+  return { vix, btc };
+}
+
+/* ============================== derived stats ============================== */
+function percentileOf(sorted, v) {
+  let lo = 0, hi = sorted.length;
+  while (lo < hi) { const m = (lo + hi) >> 1; if (sorted[m] <= v) lo = m + 1; else hi = m; }
+  return 100 * lo / sorted.length;
+}
+function monthlyStats(series, mode) {
+  // mode "mean-level": average of values by calendar month
+  // mode "median-return": median close-to-close monthly return by calendar month
+  if (mode === "mean-level") {
+    const sum = Array(12).fill(0), n = Array(12).fill(0);
+    for (const p of series) { const m = p.t.getUTCMonth(); sum[m] += p.c; n[m]++; }
+    return sum.map((s, i) => n[i] ? s / n[i] : NaN);
+  }
+  // month-end closes
+  const ends = new Map(); // "yyyy-mm" -> close
+  for (const p of series) ends.set(p.t.toISOString().slice(0, 7), p.c);
+  const keys = [...ends.keys()].sort();
+  const byMonth = Array.from({ length: 12 }, () => []);
+  for (let i = 1; i < keys.length; i++) {
+    const prev = ends.get(keys[i - 1]), cur = ends.get(keys[i]);
+    const m = +keys[i].slice(5, 7) - 1;
+    if (prev > 0) byMonth[m].push(100 * (cur / prev - 1));
+  }
+  return byMonth.map(a => {
+    if (!a.length) return NaN;
+    a.sort((x, y) => x - y);
+    const mid = a.length >> 1;
+    return a.length % 2 ? a[mid] : (a[mid - 1] + a[mid]) / 2;
+  });
+}
+
+/* ============================== SVG chart helpers ============================== */
+const NS = "http://www.w3.org/2000/svg";
+function svgEl(tag, attrs, parent) {
+  const el = document.createElementNS(NS, tag);
+  for (const k in attrs) el.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(el);
+  return el;
+}
+function niceTicksLinear(min, max, count) {
+  const span = max - min || 1;
+  const step0 = span / Math.max(1, count);
+  const mag = Math.pow(10, Math.floor(Math.log10(step0)));
+  const step = [1, 2, 2.5, 5, 10].map(m => m * mag).find(s => span / s <= count) || 10 * mag;
+  const ticks = [];
+  for (let v = Math.ceil(min / step) * step; v <= max + 1e-9; v += step) ticks.push(+v.toFixed(10));
+  return ticks;
+}
+function yearTicks(t0, t1, maxTicks) {
+  const y0 = t0.getUTCFullYear() + 1, y1 = t1.getUTCFullYear();
+  const nYears = y1 - y0 + 1;
+  const step = Math.max(1, Math.ceil(nYears / maxTicks));
+  const ticks = [];
+  for (let y = y0; y <= y1; y += step) ticks.push({ t: parseDateUTC(y + "-01-01"), label: String(y) });
+  return ticks;
+}
+
+/**
+ * Generic time-series line chart with optional horizontal bands, log scale,
+ * vertical markers, multi-series, crosshair tooltip.
+ */
+function lineChart(container, opt) {
+  container.innerHTML = "";
+  const W = opt.width || 1080, H = opt.height || 340;
+  const M = Object.assign({ top: 14, right: 16, bottom: 26, left: 46 }, opt.margin);
+  const iw = W - M.left - M.right, ih = H - M.top - M.bottom;
+  const svg = svgEl("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": opt.ariaLabel || "" }, container);
+
+  const series = opt.series; // [{name, color, width, data:[{x:number,y:number}], dash?}]
+  const allPts = series.flatMap(s => s.data);
+  const x0 = opt.x0 ?? Math.min(...allPts.map(p => p.x));
+  const x1 = opt.x1 ?? Math.max(...allPts.map(p => p.x));
+  let y0 = opt.y0 ?? Math.min(...allPts.map(p => p.y));
+  let y1 = opt.y1 ?? Math.max(...allPts.map(p => p.y));
+  if (!opt.log) { const pad = (y1 - y0) * 0.06 || 1; if (opt.y0 == null) y0 = Math.max(0, y0 - pad); if (opt.y1 == null) y1 += pad; }
+  const ly0 = opt.log ? Math.log10(y0) : y0, ly1 = opt.log ? Math.log10(y1) : y1;
+  const X = (x) => M.left + (x - x0) / (x1 - x0 || 1) * iw;
+  const Y = (y) => { const v = opt.log ? Math.log10(y) : y; return M.top + ih - (v - ly0) / (ly1 - ly0 || 1) * ih; };
+
+  // horizontal zone bands
+  for (const b of (opt.bands || [])) {
+    const yTop = Y(Math.min(b.max, y1)), yBot = Y(Math.max(b.min, y0));
+    if (yBot <= yTop) continue;
+    svgEl("rect", { x: M.left, y: yTop, width: iw, height: yBot - yTop, fill: b.fill }, svg);
+    if (b.label) svgEl("text", { x: M.left + iw - 6, y: yTop + 13, "text-anchor": "end", "font-size": 11, "font-weight": 600, fill: b.labelColor || cssVar("--muted") }, svg).textContent = b.label;
+  }
+  // band boundary hairlines
+  for (const b of (opt.bands || [])) {
+    if (b.min > y0 && b.min < y1) svgEl("line", { x1: M.left, x2: M.left + iw, y1: Y(b.min), y2: Y(b.min), stroke: cssVar("--baseline"), "stroke-dasharray": "3 3", "stroke-width": 1 }, svg);
+  }
+
+  // y grid + labels
+  const yTicks = opt.log
+    ? (opt.logTicks || []).filter(v => v >= y0 && v <= y1)
+    : niceTicksLinear(y0, y1, 6);
+  for (const v of yTicks) {
+    const y = Y(v);
+    svgEl("line", { x1: M.left, x2: M.left + iw, y1: y, y2: y, stroke: cssVar("--grid"), "stroke-width": 1 }, svg);
+    svgEl("text", { x: M.left - 8, y: y + 4, "text-anchor": "end", "font-size": 11, fill: cssVar("--muted"), style: "font-variant-numeric: tabular-nums" }, svg)
+      .textContent = opt.yFmt ? opt.yFmt(v) : v;
+  }
+  // x ticks
+  for (const tk of (opt.xTicks || [])) {
+    const x = X(tk.x);
+    if (x < M.left - 1 || x > M.left + iw + 1) continue;
+    const anchor = x < M.left + 14 ? "start" : x > M.left + iw - 14 ? "end" : "middle";
+    svgEl("line", { x1: x, x2: x, y1: M.top + ih, y2: M.top + ih + 4, stroke: cssVar("--baseline"), "stroke-width": 1 }, svg);
+    svgEl("text", { x, y: M.top + ih + 17, "text-anchor": anchor, "font-size": 11, fill: cssVar("--muted") }, svg).textContent = tk.label;
+  }
+  // baseline
+  svgEl("line", { x1: M.left, x2: M.left + iw, y1: M.top + ih, y2: M.top + ih, stroke: cssVar("--baseline"), "stroke-width": 1 }, svg);
+
+  // vertical markers (halvings, "today")
+  for (const mk of (opt.vMarkers || [])) {
+    const x = X(mk.x);
+    if (x < M.left || x > M.left + iw) continue;
+    svgEl("line", { x1: x, x2: x, y1: M.top, y2: M.top + ih, stroke: mk.color || cssVar("--muted"), "stroke-dasharray": mk.dash || "4 3", "stroke-width": mk.width || 1 }, svg);
+    if (mk.label) {
+      const nearRight = x > M.left + iw - mk.label.length * 6.5 - 8;
+      svgEl("text", { x: nearRight ? x - 4 : x + 4, y: M.top + 12, "text-anchor": nearRight ? "end" : "start", "font-size": 11, "font-weight": 600, fill: mk.color || cssVar("--muted") }, svg).textContent = mk.label;
+    }
+  }
+
+  // series paths
+  for (const s of series) {
+    let d = "";
+    for (const p of s.data) {
+      if (p.x < x0 || p.x > x1) continue;
+      if (opt.log && !(p.y > 0)) continue;
+      d += (d ? "L" : "M") + X(p.x).toFixed(1) + " " + Y(p.y).toFixed(1);
+    }
+    svgEl("path", { d, fill: "none", stroke: s.color, "stroke-width": s.width || 2, "stroke-linejoin": "round", "stroke-linecap": "round", ...(s.dash ? { "stroke-dasharray": s.dash } : {}) }, svg);
+    if (s.endLabel) {
+      const last = s.data[s.data.length - 1];
+      if (last && last.x >= x0 && last.x <= x1)
+        svgEl("text", { x: Math.min(X(last.x) + 5, M.left + iw - 2), y: Y(last.y) + 4, "font-size": 11, "font-weight": 600, fill: s.labelColor || s.color }, svg).textContent = s.endLabel;
+    }
+  }
+
+  // current-value badge on right edge (single-series charts)
+  if (opt.badge) {
+    const p = opt.badge;
+    const bx = X(x1), by = Y(p.y);
+    svgEl("circle", { cx: X(p.x), cy: by, r: 3.5, fill: p.color, stroke: cssVar("--surface-1"), "stroke-width": 2 }, svg);
+    const txt = p.text;
+    const tw = txt.length * 6.6 + 12;
+    const g = svgEl("g", {}, svg);
+    svgEl("rect", { x: Math.min(bx - tw, M.left + iw - tw), y: by - 10, width: tw, height: 20, rx: 5, fill: p.color }, g);
+    svgEl("text", { x: Math.min(bx - tw, M.left + iw - tw) + tw / 2, y: by + 4, "text-anchor": "middle", "font-size": 11.5, "font-weight": 700, fill: "#ffffff" }, g).textContent = txt;
+  }
+
+  /* crosshair + tooltip */
+  const tip = document.createElement("div");
+  tip.className = "tooltip"; container.appendChild(tip);
+  const cross = svgEl("line", { y1: M.top, y2: M.top + ih, stroke: cssVar("--muted"), "stroke-width": 1, "stroke-dasharray": "2 3", visibility: "hidden" }, svg);
+  const dots = series.map(s => svgEl("circle", { r: 4, fill: s.color, stroke: cssVar("--surface-1"), "stroke-width": 2, visibility: "hidden" }, svg));
+  const hit = svgEl("rect", { x: M.left, y: M.top, width: iw, height: ih, fill: "transparent" }, svg);
+
+  function nearest(data, xv) {
+    let lo = 0, hi = data.length - 1;
+    while (hi - lo > 1) { const m = (lo + hi) >> 1; (data[m].x < xv) ? lo = m : hi = m; }
+    return (Math.abs(data[lo].x - xv) < Math.abs(data[hi].x - xv)) ? data[lo] : data[hi];
+  }
+  hit.addEventListener("mousemove", (ev) => {
+    const rect = svg.getBoundingClientRect();
+    const px = (ev.clientX - rect.left) * (W / rect.width);
+    const xv = x0 + (px - M.left) / iw * (x1 - x0);
+    cross.setAttribute("x1", px); cross.setAttribute("x2", px);
+    cross.setAttribute("visibility", "visible");
+    let html = "", titleSet = false;
+    series.forEach((s, i) => {
+      if (!s.data.length) { dots[i].setAttribute("visibility", "hidden"); return; }
+      const p = nearest(s.data, xv);
+      if (p.x < x0 - (x1 - x0) * 0.02 || p.x > x1 + (x1 - x0) * 0.02) { dots[i].setAttribute("visibility", "hidden"); return; }
+      dots[i].setAttribute("cx", X(p.x)); dots[i].setAttribute("cy", Y(p.y));
+      dots[i].setAttribute("visibility", "visible");
+      if (!titleSet) { html += `<div class="tt-title">${opt.xTipFmt ? opt.xTipFmt(p.x, p) : ""}</div>`; titleSet = true; }
+      html += `<div class="tt-row"><span class="sw" style="background:${s.color}"></span>${s.name ? s.name + " " : ""}<b>${opt.yTipFmt ? opt.yTipFmt(p.y, p) : p.y}</b></div>`;
+    });
+    tip.innerHTML = html;
+    tip.style.display = "block";
+    const cw = container.clientWidth;
+    const left = (ev.clientX - container.getBoundingClientRect().left);
+    tip.style.left = Math.min(left + 14, cw - tip.offsetWidth - 6) + "px";
+    tip.style.top = Math.max(0, (ev.clientY - container.getBoundingClientRect().top) - tip.offsetHeight - 12) + "px";
+  });
+  hit.addEventListener("mouseleave", () => {
+    tip.style.display = "none"; cross.setAttribute("visibility", "hidden");
+    dots.forEach(d => d.setAttribute("visibility", "hidden"));
+  });
+  return svg;
+}
+
+/** Column chart for the 12-month seasonality panels. */
+function monthBarChart(container, values, opt) {
+  container.innerHTML = "";
+  const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const W = 520, H = 240;
+  const M = { top: 14, right: 8, bottom: 24, left: 40 };
+  const iw = W - M.left - M.right, ih = H - M.top - M.bottom;
+  const svg = svgEl("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": opt.ariaLabel || "" }, container);
+  const diverging = !!opt.diverging;
+  let vmin = Math.min(0, ...values.filter(isFinite)), vmax = Math.max(0, ...values.filter(isFinite));
+  if (!diverging) vmin = 0;
+  const pad = (vmax - vmin) * 0.12 || 1; vmax += pad; if (diverging) vmin -= pad;
+  const Y = (v) => M.top + ih - (v - vmin) / (vmax - vmin) * ih;
+  for (const v of niceTicksLinear(vmin, vmax, 5)) {
+    svgEl("line", { x1: M.left, x2: M.left + iw, y1: Y(v), y2: Y(v), stroke: cssVar("--grid"), "stroke-width": 1 }, svg);
+    svgEl("text", { x: M.left - 6, y: Y(v) + 4, "text-anchor": "end", "font-size": 11, fill: cssVar("--muted"), style: "font-variant-numeric: tabular-nums" }, svg)
+      .textContent = opt.yFmt ? opt.yFmt(v) : v;
+  }
+  const zeroY = Y(Math.max(0, vmin));
+  svgEl("line", { x1: M.left, x2: M.left + iw, y1: zeroY, y2: zeroY, stroke: cssVar("--baseline"), "stroke-width": 1 }, svg);
+  const bw = iw / 12;
+  const curMonth = new Date().getUTCMonth();
+  const tip = document.createElement("div"); tip.className = "tooltip"; container.appendChild(tip);
+  values.forEach((v, i) => {
+    if (!isFinite(v)) return;
+    const x = M.left + i * bw + bw * 0.16, w = bw * 0.68;
+    const yv = Y(v), yb = Y(0);
+    const yTop = Math.min(yv, yb), h = Math.max(1.5, Math.abs(yv - yb));
+    const fill = diverging ? (v >= 0 ? cssVar("--div-pos") : cssVar("--div-neg")) : cssVar("--series-1");
+    const r = 4;
+    // rounded only at the data end, flat at the baseline
+    const dPath = v >= 0
+      ? `M${x} ${yTop + h} V${yTop + r} Q${x} ${yTop} ${x + r} ${yTop} H${x + w - r} Q${x + w} ${yTop} ${x + w} ${yTop + r} V${yTop + h} Z`
+      : `M${x} ${yTop} V${yTop + h - r} Q${x} ${yTop + h} ${x + r} ${yTop + h} H${x + w - r} Q${x + w} ${yTop + h} ${x + w} ${yTop + h - r} V${yTop} Z`;
+    const bar = svgEl("path", { d: dPath, fill }, svg);
+    if (i === curMonth) {
+      svgEl("rect", { x: x - 3, y: Math.min(yTop, M.top) - 3, width: w + 6, height: ih + 6 - (Math.min(yTop, M.top) - M.top), rx: 5, fill: "none", stroke: cssVar("--ink-2"), "stroke-width": 1.2, "stroke-dasharray": "3 3" }, svg);
+    }
+    const lbl = svgEl("text", { x: x + w / 2, y: M.top + ih + 16, "text-anchor": "middle", "font-size": 10.5, fill: i === curMonth ? cssVar("--ink") : cssVar("--muted"), "font-weight": i === curMonth ? 700 : 400 }, svg);
+    lbl.textContent = MONTHS[i];
+    const show = (ev) => {
+      tip.innerHTML = `<div class="tt-title">${MONTHS[i]}${i === curMonth ? " (current month)" : ""}</div><div class="tt-row"><span class="sw" style="background:${fill}"></span><b>${opt.yTipFmt ? opt.yTipFmt(v) : v}</b></div>`;
+      tip.style.display = "block";
+      const cr = container.getBoundingClientRect();
+      tip.style.left = Math.min(ev.clientX - cr.left + 12, container.clientWidth - tip.offsetWidth - 4) + "px";
+      tip.style.top = (ev.clientY - cr.top - tip.offsetHeight - 10) + "px";
+    };
+    bar.addEventListener("mousemove", show);
+    bar.addEventListener("mouseleave", () => tip.style.display = "none");
+  });
+  return svg;
+}
+
+/* ============================== renderers ============================== */
+function renderKpis() {
+  const vixArr = state.vix, btcArr = state.btc;
+  const lastVixClose = vixArr[vixArr.length - 1];
+  const prevVixClose = vixArr[vixArr.length - 2];
+  const vNow = state.vixLive ?? lastVixClose.c;
+  const zone = vixZone(vNow);
+
+  $("kpi-vix").textContent = fmt.n1(vNow);
+  const dv = vNow - prevVixClose.c;
+  $("kpi-vix-d").innerHTML = (state.vixLive ? "delayed quote · " : "close " + fmt.date(lastVixClose.t) + " · ") +
+    `<span class="${dv >= 0 ? "up" : "down"}">${dv >= 0 ? "+" : ""}${dv.toFixed(1)} vs prior close</span>`;
+
+  const sorted = vixArr.map(p => p.c).sort((a, b) => a - b);
+  const pct = percentileOf(sorted, vNow);
+  $("kpi-vix-pct").textContent = Math.round(pct) + "%";
+  $("kpi-vix-pct-d").textContent = pct < 25 ? "calmer than usual — complacency risk" : pct > 75 ? "elevated fear — historically fertile" : "mid-range";
+
+  const zc = cssVar(zone.color);
+  $("kpi-zone").innerHTML = `<span class="zonechip"><span class="dot" style="background:${zc}"></span>${zone.name}</span>`;
+  $("kpi-zone-d").textContent = zone.action + " (" + zone.range + ")";
+
+  const lastBtc = btcArr[btcArr.length - 1];
+  $("kpi-btc").textContent = fmt.usd0(lastBtc.c);
+  $("kpi-btc-d").innerHTML = state.btc24h != null
+    ? `<span class="${state.btc24h >= 0 ? "up" : "down"}">${fmt.pct1(state.btc24h)} 24h</span>`
+    : "close " + fmt.date(lastBtc.t);
+
+  const now = new Date(); now.setUTCHours(0,0,0,0);
+  const lastHalving = parseDateUTC(HALVINGS[HALVINGS.length - 1].date);
+  const days = Math.round((now - lastHalving) / DAY);
+  const cycPct = Math.min(100, Math.round(100 * days / CYCLE_LEN_DAYS));
+  $("kpi-days").textContent = days.toLocaleString();
+  const toNext = Math.max(0, Math.round((parseDateUTC(NEXT_HALVING_EST) - now) / DAY));
+  $("kpi-days-d").textContent = `${cycPct}% through the cycle · ~${toNext.toLocaleString()}d to est. 2028 halving`;
+
+  const phase = cyclePhase(days);
+  $("kpi-phase").textContent = phase.name;
+  $("kpi-phase-d").textContent = phase.note;
+
+  return { vNow, zone, days, phase, pct };
+}
+
+function renderSignal(k) {
+  const zoneTxt = {
+    buy:   `VIX at ${fmt.n1(k.vNow)} is in the <b>BUY</b> zone — panic this deep has marked every major multi-month equity low since 1990. Historically the play: buy high-beta tech, growth and small caps aggressively.`,
+    scale: `VIX at ${fmt.n1(k.vNow)} is in the <b>SCALE IN</b> zone — fear is elevated but not extreme. Historically the play: start adding quality tech, financials and cyclicals in tranches.`,
+    hold:  `VIX at ${fmt.n1(k.vNow)} is in the <b>HOLD</b> zone (${Math.round(k.pct)}th percentile since 1990) — no edge from volatility right now. Stay positioned; keep dry powder for a spike above 35.`,
+    sell:  `VIX at ${fmt.n1(k.vNow)} is in the <b>SELL</b> zone — calm this complete has preceded selloffs. Historically the play: trim high-beta exposure, rotate toward utilities, healthcare, staples and bonds.`,
+  }[k.zone.key];
+  const phaseTxt = {
+    ramp:  `Bitcoin is <b>${k.days} days</b> past the April 2024 halving — the post-halving ramp, when the supply shock is still being absorbed.`,
+    bull:  `Bitcoin is <b>${k.days} days</b> past the April 2024 halving — inside the historical bull window (prior cycles topped at days 371, 526 and 549). Ride it, but plan the exit.`,
+    bear:  `Bitcoin is <b>${k.days} days</b> past the April 2024 halving — inside the historical bear window (prior cycles bottomed at days 778, 891 and 925). This is where patient accumulation has paid best.`,
+    accum: `Bitcoin is <b>${k.days} days</b> past the April 2024 halving — the accumulation window after prior-cycle bottoms. Historically the quiet stretch to build a position before the pre-halving run-up.`,
+    runup: `Bitcoin is <b>${k.days} days</b> past the April 2024 halving — the pre-halving run-up window, when markets historically began front-running the next supply cut.`,
+  }[k.phase.key];
+  const combined = PLAYBOOK[k.zone.key][PHASES.findIndex(p => p.key === k.phase.key)];
+  $("signal-text").innerHTML = `${zoneTxt}<br><br>${phaseTxt}<br><br>Combined stance: <b>${combined}</b>.`;
+}
+
+const VIX_RANGES = [
+  { key: "2018", label: "Since 2018 (cheat sheet)", from: () => parseDateUTC("2018-01-01") },
+  { key: "5y",  label: "5Y",  from: (now) => new Date(now.getTime() - 5 * 365.25 * DAY) },
+  { key: "10y", label: "10Y", from: (now) => new Date(now.getTime() - 10 * 365.25 * DAY) },
+  { key: "all", label: "All (1990)", from: () => parseDateUTC("1990-01-01") },
+];
+let vixRange = "2018";
+
+function renderVixChart() {
+  const now = state.vix[state.vix.length - 1].t;
+  const from = VIX_RANGES.find(r => r.key === vixRange).from(now);
+  const data = state.vix.filter(p => p.t >= from).map(p => ({ x: p.t.getTime(), y: p.c }));
+  const vNow = state.vixLive ?? data[data.length - 1].y;
+  const ymax = Math.min(90, Math.max(45, Math.ceil(Math.max(...data.map(p => p.y)) / 5) * 5));
+  const good = cssVar("--good"), crit = cssVar("--critical");
+  lineChart($("chart-vix"), {
+    height: 360,
+    series: [{ name: "VIX", color: cssVar("--ink"), width: 1.4, data }],
+    y0: Math.max(0, Math.floor(Math.min(...data.map(p => p.y)) - 3)), y1: ymax,
+    bands: [
+      { min: 35, max: ymax, fill: cssVar("--wash-buy"),   label: "BUY 35+ — buy aggressively",  labelColor: good },
+      { min: 25, max: 35,   fill: cssVar("--wash-scale"), label: "SCALE IN 25–35",              labelColor: good },
+      { min: 15, max: 25,   fill: cssVar("--wash-hold"),  label: "HOLD 15–25" },
+      { min: 0,  max: 15,   fill: cssVar("--wash-sell"),  label: "SELL below 15 — reduce",      labelColor: crit },
+    ],
+    xTicks: yearTicks(from, now, vixRange === "all" ? 12 : 10).map(t => ({ x: t.t.getTime(), label: t.label })),
+    yFmt: (v) => v,
+    xTipFmt: (x) => fmt.date(new Date(x)),
+    yTipFmt: (y) => fmt.n1(y) + " — " + vixZone(y).name,
+    badge: { x: data[data.length - 1].x, y: vNow, color: cssVar("--series-1"), text: "TODAY: " + fmt.n1(vNow) },
+    ariaLabel: "VIX daily closes with buy and sell zones",
+  });
+  // zone legend
+  const zl = $("zonelegend");
+  const cur = vixZone(vNow);
+  zl.innerHTML = VIX_ZONES.map(z => `
+    <div class="zl ${z.key === cur.key ? "current" : ""}">
+      <b><span class="dot" style="background:${cssVar(z.color)}"></span>${z.name} <span class="zr">${z.range}</span></b>
+      <div class="zt">${z.action} — ${z.targets}${z.key === cur.key ? " · <b>← now</b>" : ""}</div>
+    </div>`).join("");
+}
+
+function renderVixPresets() {
+  const box = $("vix-presets");
+  box.innerHTML = "";
+  for (const r of VIX_RANGES) {
+    const b = document.createElement("button");
+    b.textContent = r.label;
+    b.className = r.key === vixRange ? "active" : "";
+    b.onclick = () => { vixRange = r.key; renderVixPresets(); renderVixChart(); };
+    box.appendChild(b);
+  }
+}
+
+function renderSeasonality() {
+  const vixMonthly = monthlyStats(state.vix, "mean-level");
+  monthBarChart($("chart-seas-vix"), vixMonthly, {
+    yFmt: (v) => v, yTipFmt: (v) => "avg VIX " + fmt.n1(v),
+    ariaLabel: "Average VIX by calendar month",
+  });
+  $("seas-vix-sub").textContent = `Mean of daily closes, ${state.vix[0].t.getUTCFullYear()}–present · current month outlined`;
+
+  const btcMonthly = monthlyStats(state.btc, "median-return");
+  monthBarChart($("chart-seas-btc"), btcMonthly, {
+    diverging: true, yFmt: (v) => v + "%", yTipFmt: (v) => fmt.pct1(v) + " median",
+    ariaLabel: "Bitcoin median monthly return by calendar month",
+  });
+  $("seas-btc-sub").textContent = state.btcDegraded
+    ? "Only 365 days of history loaded — medians are from a single year; treat as illustrative"
+    : `Median month-over-month return, ${state.btc[0].t.getUTCFullYear()}–present · blue = positive, red = negative · current month outlined`;
+}
+
+function renderBtcChart() {
+  const data = state.btc.map(p => ({ x: p.t.getTime(), y: p.c }));
+  const ymin = Math.max(0.05, Math.min(...data.map(p => p.y)));
+  const ymax = Math.max(...data.map(p => p.y)) * 1.4;
+  const logTicks = [0.1, 1, 10, 100, 1000, 10000, 100000, 1000000].filter(v => v >= ymin / 2 && v <= ymax);
+  const t0 = data[0].x, t1 = data[data.length - 1].x;
+  lineChart($("chart-btc"), {
+    height: 340, margin: { left: 56 },
+    log: true, logTicks,
+    series: [{ name: "BTC", color: cssVar("--series-1"), width: 1.6, data }],
+    y0: ymin / 1.2, y1: ymax,
+    xTicks: yearTicks(new Date(t0), new Date(t1), 14).map(t => ({ x: t.t.getTime(), label: t.label })),
+    yFmt: (v) => v >= 1e6 ? "$" + (v / 1e6) + "M" : v >= 1000 ? "$" + (v / 1000) + "k" : "$" + v,
+    xTipFmt: (x) => fmt.date(new Date(x)),
+    yTipFmt: (y) => fmt.usd(y),
+    vMarkers: HALVINGS.map(h => ({ x: parseDateUTC(h.date).getTime(), label: h.label + " halving", color: cssVar("--muted") }))
+      .filter(m => m.x >= t0 && m.x <= t1),
+    ariaLabel: "Bitcoin daily price on a log scale with halving markers",
+  });
+}
+
+function renderOverlay() {
+  if (state.btcDegraded) {
+    $("chart-overlay").innerHTML = '<div class="err-inline">Full BTC history unavailable (fallback source only returned 365 days), so past cycles can\'t be drawn. Reload to retry the full-history sources.</div>';
+    return;
+  }
+  const byTime = state.btc;
+  const startIdx = new Map(byTime.map((p, i) => [fmt.date(p.t), i]));
+  function seriesFor(halvingIdx) {
+    const h = parseDateUTC(HALVINGS[halvingIdx].date);
+    const end = halvingIdx + 1 < HALVINGS.length ? parseDateUTC(HALVINGS[halvingIdx + 1].date) : new Date(8640000000000);
+    let i0 = startIdx.get(fmt.date(h));
+    if (i0 == null) { i0 = byTime.findIndex(p => p.t >= h); if (i0 < 0) return null; }
+    const p0 = byTime[i0].c;
+    const pts = [];
+    for (let i = i0; i < byTime.length; i++) {
+      const p = byTime[i];
+      if (p.t >= end) break;
+      const d = Math.round((p.t - h) / DAY);
+      if (d > CYCLE_LEN_DAYS + 60) break;
+      pts.push({ x: d, y: 100 * p.c / p0, t: p.t });
+    }
+    return pts.length > 30 ? pts : null;
+  }
+  const ctx = [cssVar("--ctx-1"), cssVar("--ctx-2"), cssVar("--ctx-3")];
+  const series = [];
+  for (let i = 0; i < HALVINGS.length; i++) {
+    const pts = seriesFor(i);
+    if (!pts) continue;
+    const isCurrent = i === HALVINGS.length - 1;
+    series.push({
+      name: HALVINGS[i].label + " cycle", endLabel: HALVINGS[i].label,
+      color: isCurrent ? cssVar("--series-1") : ctx[i % 3],
+      labelColor: isCurrent ? cssVar("--series-1") : cssVar("--ink-2"),
+      width: isCurrent ? 2.4 : 1.5,
+      data: pts,
+    });
+  }
+  const now = new Date(); now.setUTCHours(0,0,0,0);
+  const daysNow = Math.round((now - parseDateUTC(HALVINGS[HALVINGS.length - 1].date)) / DAY);
+  const allY = series.flatMap(s => s.data.map(p => p.y));
+  const ymax = Math.max(...allY) * 1.3, ymin = Math.min(...allY) / 1.2;
+  lineChart($("chart-overlay"), {
+    height: 380, margin: { left: 52 },
+    log: true, logTicks: [25, 50, 100, 200, 400, 800, 1600, 3200, 6400, 12800].filter(v => v >= ymin && v <= ymax),
+    series,
+    x0: 0, x1: CYCLE_LEN_DAYS + 60,
+    y0: ymin, y1: ymax,
+    xTicks: [0, 182, 365, 548, 730, 912, 1095, 1278, 1460].map(d => ({ x: d, label: d === 0 ? "halving" : d + "d" })),
+    yFmt: (v) => (v / 100).toLocaleString("en-US", { maximumFractionDigits: 2 }) + "×",
+    xTipFmt: (x) => "day " + x + " after halving",
+    yTipFmt: (y) => (y / 100).toLocaleString("en-US", { maximumFractionDigits: 2 }) + "× halving price",
+    vMarkers: [
+      { x: daysNow, label: "today (day " + daysNow + ")", color: cssVar("--series-1"), dash: "5 4", width: 1.4 },
+      ...PHASES.slice(1).map(p => ({ x: p.from, color: cssVar("--grid"), dash: "2 4" })),
+    ],
+    ariaLabel: "Bitcoin cycles overlaid, indexed to 100 at each halving, log scale",
+  });
+}
+
+function renderPlaybook(k) {
+  const tbl = $("playbook");
+  let html = "<thead><tr><th>VIX zone ↓ · Cycle phase →</th>";
+  for (const p of PHASES) html += `<th>${p.name}<span class="thsub">day ${p.from}–${p.to >= 1600 ? "halving" : p.to}</span></th>`;
+  html += "</tr></thead><tbody>";
+  for (const z of VIX_ZONES) {
+    html += `<tr><th><span class="zonechip"><span class="dot" style="background:${cssVar(z.color)}"></span>${z.name}</span><span class="thsub">${z.range}</span></th>`;
+    PHASES.forEach((p, i) => {
+      const isNow = z.key === k.zone.key && p.key === k.phase.key;
+      html += `<td class="${isNow ? "now" : ""}">${PLAYBOOK[z.key][i]}${isNow ? " · <b>← you are here</b>" : ""}</td>`;
+    });
+    html += "</tr>";
+  }
+  html += "</tbody>";
+  tbl.innerHTML = html;
+}
+
+function renderAll() {
+  const k = renderKpis();
+  renderSignal(k);
+  renderVixPresets();
+  renderVixChart();
+  renderSeasonality();
+  renderBtcChart();
+  renderOverlay();
+  renderPlaybook(k);
+  setChip("chip-asof", "ok", "as of " + new Date().toLocaleString());
+}
+
+/* ============================== boot ============================== */
+async function boot() {
+  $("banner-error").classList.add("hidden");
+  if (state.demo) {
+    $("banner-demo").classList.remove("hidden");
+    const d = demoData();
+    state.vix = d.vix; state.btc = d.btc;
+    state.vixLive = null; state.btc24h = 1.7; state.btcDegraded = false;
+    setChip("chip-vix", "warn", "VIX: demo");
+    setChip("chip-btc", "warn", "BTC: demo");
+    renderAll();
+    return;
+  }
+  setChip("chip-vix", "", "VIX: loading…");
+  setChip("chip-btc", "", "BTC: loading…");
+  const [vixR, btcR, quoteR, spotR] = await Promise.allSettled([loadVix(), loadBtc(), loadVixQuote(), loadBtcSpot()]);
+  const errs = [];
+  if (vixR.status === "fulfilled") {
+    state.vix = vixR.value;
+    setChip("chip-vix", "ok", "VIX: CBOE · " + state.vix.length.toLocaleString() + " days");
+  } else { errs.push("VIX (CBOE): " + vixR.reason.message); setChip("chip-vix", "err", "VIX: failed"); }
+  if (btcR.status === "fulfilled") {
+    state.btc = btcR.value.data;
+    state.btcDegraded = btcR.value.degraded;
+    setChip("chip-btc", btcR.value.degraded ? "warn" : "ok", "BTC: " + btcR.value.src);
+  } else { errs.push("BTC (all sources): " + btcR.reason.message); setChip("chip-btc", "err", "BTC: failed"); }
+  state.vixLive = quoteR.status === "fulfilled" ? quoteR.value : null;
+  state.btc24h = (spotR.status === "fulfilled" && spotR.value) ? spotR.value.chg : null;
+  if (spotR.status === "fulfilled" && spotR.value && state.btc && state.btc.length) {
+    // splice live spot onto the last daily point so the KPIs are current
+    const last = state.btc[state.btc.length - 1];
+    const today = new Date(); today.setUTCHours(0,0,0,0);
+    if (last.t < today) state.btc.push({ t: today, c: spotR.value.price });
+    else last.c = spotR.value.price;
+  }
+  if (!state.vix || !state.btc) {
+    const b = $("banner-error");
+    b.classList.remove("hidden");
+    b.innerHTML = "<b>Some data failed to load:</b> " + errs.join(" · ") +
+      ". Check your connection / ad-blocker and hit Refresh. Add <code>?demo=1</code> to the URL to preview the layout with synthetic data.";
+    if (!state.vix && !state.btc) return;
+    // render what we can: fabricate nothing — hide sections that lack data
+    if (!state.vix) { $("sec-vix").style.display = "none"; }
+    if (!state.btc) { $("sec-cycle").style.display = "none"; }
+    if (!state.vix || !state.btc) { $("sec-season").style.display = "none"; $("sec-signal").style.display = "none"; $("sec-playbook").style.display = "none"; $("kpis").style.display = "none"; return; }
+  }
+  renderAll();
+}
+$("btn-refresh").addEventListener("click", boot);
+boot();
+</script>
+</body>
+</html>
